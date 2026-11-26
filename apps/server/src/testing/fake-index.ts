@@ -1,4 +1,4 @@
-import type { EvidenceLevel, HptIndex, Passage, PassageId, SearchHit, SearchOptions, SearchResult } from "../src/features/search/index.ts";
+import type { EvidenceLevel, HptIndex, Passage, PassageId, SearchHit, SearchOptions, SearchResult } from "../features/search/index.ts";
 
 export type FakeIndex = HptIndex & {
   readonly queries: { readonly query: string; readonly options: SearchOptions | undefined }[];

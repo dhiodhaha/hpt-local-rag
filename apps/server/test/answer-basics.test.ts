@@ -5,7 +5,7 @@ import { describe, it } from "node:test";
 import { citedOf, emptyAnswer, foldAnswer } from "../src/features/answer/fold.ts";
 import { createTripwire, loadCanary } from "../src/features/answer/tripwire.ts";
 import type { AnswerEvent } from "../src/features/answer/types.ts";
-import { ONE, TWO, ledgerOf, makePassage } from "./answer-fixtures.ts";
+import { ONE, TWO, ledgerOf, makePassage } from "../src/testing/answer-fixtures.ts";
 import { tempDir } from "./helpers.ts";
 
 describe("the source ledger", () => {

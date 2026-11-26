@@ -7,7 +7,7 @@ import type { AnswerEngine, Finished } from "../src/features/answer/engine.ts";
 import { createRecorder, jsonlTraceSink, memoryTraceSink, type Trace } from "../src/features/answer/trace.ts";
 import { emptyAnswer } from "../src/features/answer/fold.ts";
 import type { CompleteAnswer, Turn } from "../src/features/answer/types.ts";
-import { ONE, TWO } from "./answer-fixtures.ts";
+import { ONE, TWO } from "../src/testing/answer-fixtures.ts";
 import { tempDir } from "./helpers.ts";
 
 describe("the trace recorder", () => {

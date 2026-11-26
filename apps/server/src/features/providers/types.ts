@@ -104,3 +104,10 @@ export async function assertProviderContract(events: AsyncIterable<ProviderEvent
   assert.equal(seen.at(-1)?.kind, "end", "end must be last");
   return seen;
 }
+
+/** What a provider can say about its login without spending a question. */
+export type Connection =
+  | { readonly state: "checking" }
+  | { readonly state: "connected"; readonly subscription: string | null }
+  | { readonly state: "not_signed_in" }
+  | { readonly state: "unknown" };

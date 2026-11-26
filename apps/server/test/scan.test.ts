@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createScanner, decodePartialString, type ScanEvent } from "../src/features/answer/scan.ts";
 import { PROGRESS_FIELDS } from "../src/features/answer/wire.ts";
-import { answerJson } from "./answer-fixtures.ts";
+import { answerJson } from "../src/testing/answer-fixtures.ts";
 
 const scanAll = (chunks: readonly string[]): ScanEvent[] => {
   const scanner = createScanner({ progressFields: PROGRESS_FIELDS });

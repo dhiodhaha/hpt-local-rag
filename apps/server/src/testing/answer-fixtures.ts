@@ -1,7 +1,7 @@
-import type { NoteId } from "../src/features/corpus/index.ts";
-import type { Passage, PassageId } from "../src/features/search/index.ts";
-import { SourceLedger } from "../src/features/answer/ledger.ts";
-import { FIELD_ORDER } from "../src/features/answer/wire.ts";
+import type { NoteId } from "../features/corpus/index.ts";
+import type { Passage, PassageId } from "../features/search/index.ts";
+import { SourceLedger } from "../features/answer/ledger.ts";
+import { FIELD_ORDER } from "../features/answer/wire.ts";
 
 export const ARABIC = "كَتَبَ الْكَاتِبُ الْكِتَابَ";
 

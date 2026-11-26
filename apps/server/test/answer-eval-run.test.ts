@@ -22,8 +22,8 @@ import {
 import { scriptedProvider, type ScriptedAttempt } from "../src/features/providers/index.ts";
 import type { Passage } from "../src/features/search/index.ts";
 import { answerConfig } from "../src/shared/config.ts";
-import { GOOD_ANSWER, ONE, TWO, answerJson } from "./answer-fixtures.ts";
-import { fakeIndex } from "./fake-index.ts";
+import { GOOD_ANSWER, ONE, TWO, answerJson } from "../src/testing/answer-fixtures.ts";
+import { fakeIndex } from "../src/testing/fake-index.ts";
 
 const SETTINGS = { model: "claude-test", effort: "medium", maxExtraToolCalls: 2, searchLimit: 10, evidenceTokens: 8000 } as const;
 const PROMPT = loadPromptTemplate(answerConfig.systemPromptDoc);

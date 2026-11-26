@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TARGETS, assertLocked, candidatesFrom, compositionOf, hashCases, lockOf, pickCases, withoutWhy, type Candidate, type DraftedCase } from "../src/features/eval/index.ts";
-import { ONE, TWO } from "./answer-fixtures.ts";
-import { fakeIndex } from "./fake-index.ts";
+import { ONE, TWO } from "../src/testing/answer-fixtures.ts";
+import { fakeIndex } from "../src/testing/fake-index.ts";
 
 function candidate(n: number, overrides: Partial<Candidate> = {}): Candidate {
   return { id: `q-${String(n).padStart(8, "0")}-1`, question: `Pertanyaan nomor ${n}`, expectedNotes: [ONE.noteId], evidence: "strong", bestRank: 1, differs: false, ...overrides };

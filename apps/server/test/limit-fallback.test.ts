@@ -10,8 +10,8 @@ import type { AnswerEvent } from "../src/features/answer/types.ts";
 import { createPrinter, summaryLines } from "../src/commands/ask.ts";
 import { chunked, scriptedProvider, type ScriptedAttempt } from "../src/features/providers/index.ts";
 import { answerConfig } from "../src/shared/config.ts";
-import { ONE, TWO, answerJson } from "./answer-fixtures.ts";
-import { fakeIndex } from "./fake-index.ts";
+import { ONE, TWO, answerJson } from "../src/testing/answer-fixtures.ts";
+import { fakeIndex } from "../src/testing/fake-index.ts";
 
 const OPUS: Route = { model: "claude-opus-5-5", effort: "low" };
 const SONNET: Route = { model: "claude-sonnet-5-5", effort: "low" };

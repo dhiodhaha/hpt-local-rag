@@ -5,8 +5,8 @@ import { bootstrap, citedOutsideRevision, p50, pairedChange, score, type AnswerC
 import { chunked, scriptedProvider, type ScriptedAttempt } from "../src/features/providers/index.ts";
 import type { Passage } from "../src/features/search/index.ts";
 import { answerConfig } from "../src/shared/config.ts";
-import { ONE, TWO, answerJson, makePassage } from "./answer-fixtures.ts";
-import { fakeIndex } from "./fake-index.ts";
+import { ONE, TWO, answerJson, makePassage } from "../src/testing/answer-fixtures.ts";
+import { fakeIndex } from "../src/testing/fake-index.ts";
 
 const SETTINGS = { model: "claude-test", effort: "medium", maxExtraToolCalls: 2, searchLimit: 10, evidenceTokens: 8000 } as const;
 const PROMPT = loadPromptTemplate(answerConfig.systemPromptDoc);

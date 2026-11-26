@@ -2,6 +2,10 @@
   "name": "@hpt/server",
   "private": true,
   "type": "module",
+  "exports": {
+    "./client": "./src/client.ts",
+    "./testing": "./src/testing/index.ts"
+  },
   "scripts": {
     "vault:build": "node src/features/corpus/build-vault.ts",
     "hpt": "node src/cli.ts",
@@ -23,6 +27,7 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.0.0",
     "@types/turndown": "^5.0.0",
+    "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
   }
 }
