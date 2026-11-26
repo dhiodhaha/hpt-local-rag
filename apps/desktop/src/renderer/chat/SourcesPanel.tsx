@@ -21,13 +21,23 @@ function cornersOf(index: number, total: number): CSSProperties {
   return index === total - 1 ? { borderRadius: `6px 6px ${RADIUS_BIG} ${RADIUS_BIG}` } : { borderRadius: 6 };
 }
 
-function Card({ card, style, active }: { card: PanelCard; style: CSSProperties; active: boolean }) {
+/** The entrance class is dropped when it ends, so React moving the card to a new place never replays it. */
+function Card({ card, style, active, index }: { card: PanelCard; style: CSSProperties; active: boolean; index: number }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [entering, setEntering] = useState(true);
   useEffect(() => {
     if (active) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [active]);
   return (
-    <div ref={ref} className="scard" style={{ ...style, ...(active ? { boxShadow: "inset 0 0 0 1.5px var(--color-accent)" } : {}) }} data-source={card.id}>
+    <div
+      ref={ref}
+      className={entering ? "scard m-source" : "scard"}
+      style={{ ...style, "--i": index, ...(active ? { boxShadow: "inset 0 0 0 1.5px var(--color-accent)" } : {}) } as CSSProperties}
+      data-source={card.id}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget) setEntering(false);
+      }}
+    >
       <div className="h">
         <span className={card.number === null ? "num wait" : "num"}>{card.number ?? "·"}</span>
         <div className="nm">{card.title}</div>
@@ -51,7 +61,7 @@ const CHEVRON = (
 );
 
 function Cards({ cards, active }: { cards: readonly PanelCard[]; active: PassageId | null }) {
-  return cards.map((card, index) => <Card key={card.id} card={card} style={cornersOf(index, cards.length)} active={active === card.id} />);
+  return cards.map((card, index) => <Card key={card.id} card={card} style={cornersOf(index, cards.length)} active={active === card.id} index={index} />);
 }
 
 function Current({ panel, active }: { panel: Panel; active: PassageId | null }) {

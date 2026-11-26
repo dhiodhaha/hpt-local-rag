@@ -14,7 +14,7 @@ import { fakeIndex, type FakeIndex } from "./fake-index.ts";
  * Why scenarios and not hand-written event lists: a hand-written list can describe a stream the engine would never produce.
  * A scenario can only produce what the engine produces.
  */
-const PASSAGES: readonly Passage[] = [
+export const SCENARIO_PASSAGES: readonly Passage[] = [
   makePassage(1, TEXT_ONE, { sourceType: "hpt", title: "HPT Jilid 1, Bab Kompos", number: null, year: null, locator: { volume: "Jilid 1", kitab: "Kitab Pertanian", bab: "Bab Kompos" } }),
   makePassage(2, TEXT_TWO, { sourceType: "fatwa", title: "Fatwa Tarjih Uji 2", number: "2", year: 2003 }),
   makePassage(3, "Daun kering juga dapat dibakar, tetapi pembakaran di ruang terbuka dilarang di banyak daerah.", { sourceType: "tanya_jawab", title: "Tanya Jawab Uji 3", number: "3", year: 2011 }),
@@ -39,6 +39,8 @@ type Scenario = {
   readonly connection?: Connection;
   /** Named points where a scenario can be frozen: nothing after the matching event is delivered. */
   readonly cuts?: Readonly<Record<string, Cut>>;
+  /** `hpt host --scenario` fills the conversations folder with a fictional history first (riwayat-seed.ts). */
+  readonly seed?: boolean;
 };
 
 const stream = (text: string, size: number, delayMs: number): ScriptedAttempt => ({ chunks: chunked(text, size), delayMs });
@@ -49,6 +51,12 @@ const CONNECTED: Connection = { state: "connected", subscription: "Claude Max" }
 const reply = (type: string, extra: Record<string, unknown>) => answerJson({ ...NOT_A_ANSWER, type, ...extra });
 
 export const SCENARIOS = {
+  /** Riwayat: a fictional history on several days, and the same answer as `settled` for any new question. */
+  riwayat: {
+    question: QUESTION,
+    script: (size) => [stream(answerJson(THREE_CITED), size, 0), stream(answerJson(THREE_CITED), size, 0)],
+    seed: true,
+  },
   /** D7.1 then D7.2: the headline is marked verifying until the summary passes its checks. */
   settled: {
     question: QUESTION,
@@ -157,7 +165,7 @@ export type ScenarioRig = {
 
 export function scenarioRig(name: ScenarioName, options: ScenarioOptions = {}): ScenarioRig {
   const scenario: Scenario = SCENARIOS[name];
-  const index = fakeIndex(PASSAGES);
+  const index = fakeIndex(SCENARIO_PASSAGES);
   index.evidence = () => scenario.evidence ?? "strong";
   const script = scenario.script(CHUNK_CHARS).map((attempt) => ({ ...attempt, delayMs: options.delayMs ?? 0 }));
   const engine = createEngine({

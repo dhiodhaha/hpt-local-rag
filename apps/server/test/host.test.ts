@@ -300,3 +300,63 @@ describe("hpt host as a forked process", () => {
     assert.match(run.stderr, /Started by the desktop app/);
   });
 });
+
+describe("Riwayat over the host", () => {
+  it("lists, reopens with the ledger's passages, renames and deletes what an ask stored", async () => {
+    const { client, conversations } = rig([ok(), ok()]);
+    const first = await collect(client, ask({ question: "Apakah kompos boleh?" })).call.done;
+    await collect(client, ask({ question: "Lalu pupuk?" })).call.done;
+    const { conversations: listed } = await client.request("list", null);
+    assert.deepEqual(listed.map((entry) => entry.title), ["Lalu pupuk?", "Apakah kompos boleh?"]);
+
+    const opened = await client.request("open", { conversation: first.conversation });
+    assert.equal(opened.turns.length, 1);
+    assert.deepEqual(opened.turns[0]?.answer, conversations.open(first.conversation).turns[0]?.answer);
+    assert.deepEqual(opened.turns[0]?.sources.map((card) => card.passage.id), [ONE.id, TWO.id]);
+
+    const renamed = await client.request("rename", { conversation: first.conversation, title: "  Kompos  daun " });
+    assert.equal(renamed.conversation.title, "Kompos daun");
+    assert.equal((await client.request("list", null)).conversations.at(-1)?.title, "Kompos daun");
+
+    await client.request("remove", { conversation: first.conversation });
+    assert.deepEqual((await client.request("list", null)).conversations.map((entry) => entry.title), ["Lalu pupuk?"]);
+    await assert.rejects(client.request("open", { conversation: first.conversation }), { code: "not_found" });
+    await client.request("remove", { conversation: first.conversation });
+  });
+
+  it("searches questions and stored answers", async () => {
+    const { client } = rig([ok()]);
+    await collect(client, ask({ question: "Apakah kompos boleh?" })).call.done;
+    assert.equal((await client.request("search", { query: "kompos" })).hits.length, 1);
+    assert.deepEqual((await client.request("search", { query: "tidak-ada-kata-ini" })).hits, []);
+    assert.deepEqual((await client.request("search", { query: "" })).hits, []);
+  });
+
+  it("refuses an id that is a path and a title or query that is far too long", async () => {
+    const { client } = rig([]);
+    await assert.rejects(client.request("open", { conversation: "../../x" }), { code: "bad_request" });
+    await assert.rejects(client.request("remove", { conversation: "..\\..\\x" }), { code: "bad_request" });
+    await assert.rejects(client.request("search", { query: "x".repeat(500) }), { code: "bad_request" });
+    await assert.rejects(client.request("rename", { conversation: "c-20261126-101500-abcd", title: "x".repeat(500) }), { code: "bad_request" });
+  });
+
+  it("will not delete a conversation while it is answering", async () => {
+    const { client } = rig([ok(), ok(60)]);
+    const first = await collect(client, ask()).call.done;
+    const running = collect(client, ask({ conversation: first.conversation, question: "Lanjut?" }));
+    await wait(20);
+    await assert.rejects(client.request("remove", { conversation: first.conversation }), { code: "bad_request" });
+    await running.call.done;
+    await wait(5);
+    await client.request("remove", { conversation: first.conversation });
+    assert.deepEqual((await client.request("list", null)).conversations, []);
+  });
+
+  it("says the index is unavailable instead of listing nothing, and fails fast when the host is down", async () => {
+    const host = createHost({ backend: { unavailable: "no index" }, models: claudeModelOptions(), probe: () => Promise.resolve(CONNECTED), close: async () => {}, log: () => {} });
+    const client = createClient(memoryPipe(host));
+    await assert.rejects(client.request("list", null), { code: "index_unavailable" });
+    const down = createClient({ send: () => {}, subscribe: (listener) => (listener({ kind: "down", reason: "exited" }), () => {}) });
+    await assert.rejects(down.request("list", null), { code: "host_down" });
+  });
+});

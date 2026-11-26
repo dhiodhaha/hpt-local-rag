@@ -1,0 +1,200 @@
+/*
+ * Rules:
+ *
+ *   - entrances are one-shot keyframes on content that arrives by itself; anything a person toggles is a transition
+ *   - only opacity and transform move. Colour changes (the headline settling, a citation lighting up) are small paint-only fades
+ *   - reduced motion is gentler, not off: motion.ts zeroes the offsets and `data-motion="reduced"` stops the shimmer, the pulse and
+ *     the caret. Fades and colour changes stay
+ *   - one entrance per container: a staggered group is not also inside a sliding parent
+ */
+@keyframes m-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise-y, 0px));
+  }
+}
+@keyframes m-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes m-cite {
+  from {
+    background-color: transparent;
+    color: var(--color-ink-muted);
+    box-shadow: inset 0 0 0 1px var(--color-rule);
+  }
+}
+@keyframes m-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.88);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes m-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes m-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* The later in the list, the less a card travels, so the first card leads. */
+.m-source {
+  --i: 0;
+  --rise-y: calc(var(--m-sources-offset) * (1 - min(var(--i), 4) * 0.15));
+  animation: m-rise var(--m-sources-enter) var(--m-ease) both;
+  animation-delay: calc(min(var(--i), 6) * var(--m-sources-stagger));
+}
+
+.m-field {
+  --i: 0;
+  --rise-y: calc(var(--m-field-offset) * (1 - min(var(--i), 3) * 0.2));
+  animation: m-rise var(--m-field-enter) var(--m-ease) both;
+  animation-delay: calc(min(var(--i), 5) * var(--m-card-stagger));
+}
+
+.m-open .it-card {
+  --i: 0;
+  transition-property: opacity, transform;
+  transition-duration: var(--m-field-enter);
+  transition-timing-function: var(--m-ease);
+  transition-delay: calc(min(var(--i), 5) * var(--m-card-stagger));
+  @starting-style {
+    opacity: 0;
+    transform: translateY(var(--m-field-offset));
+  }
+}
+
+.m-surface {
+  animation: m-fade var(--m-field-enter) var(--m-ease) both;
+}
+
+.m-headline {
+  --rise-y: var(--m-headline-offset);
+  animation: m-rise var(--m-headline-enter) var(--m-ease) both;
+  transition: color var(--m-headline-settle) ease-out;
+}
+.m-headline[data-verifying="true"] {
+  color: color-mix(in srgb, var(--color-ink) calc(var(--m-headline-ink) * 1%), var(--color-surface));
+}
+
+.m-word {
+  animation: m-fade var(--m-word-fade) var(--m-ease) both;
+}
+
+.c:not([data-state="pending"]) {
+  animation: m-cite var(--m-cite) var(--m-ease) both;
+}
+
+.m-verify {
+  animation: m-fade var(--m-verify-fade) var(--m-ease) both;
+  transition: opacity var(--m-verify-fade) ease-out;
+}
+.m-verify[data-closing="true"] {
+  opacity: 0;
+}
+
+.sp,
+.vm-dot,
+.rc-dot {
+  animation: m-pulse var(--m-pulse) ease-in-out infinite;
+}
+.sp {
+  flex: none;
+  fill: var(--color-aura-3);
+}
+.vm-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+}
+.rc-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+}
+
+.sk {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-rule);
+}
+.sk::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--color-ground) 50%, transparent 100%);
+  animation: m-sweep var(--m-shimmer) ease-in-out infinite;
+}
+
+.swap {
+  display: grid;
+}
+.swap > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+.swap-in {
+  animation: m-fade var(--m-skeleton-swap) ease-out both;
+}
+.swap-sk {
+  transition: opacity var(--m-skeleton-swap) ease-out;
+}
+.swap-sk[data-closing="true"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.m-hold {
+  transition: opacity var(--m-restart-out) ease-out;
+}
+.m-hold[data-leaving="true"] {
+  opacity: 0;
+}
+.m-restart-in {
+  animation: m-fade var(--m-restart-in) var(--m-ease) both;
+}
+
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -3px;
+  background: var(--color-accent);
+  border-radius: 1px;
+  animation: m-blink 1s steps(2) infinite;
+}
+
+:root[data-motion="reduced"] .caret {
+  animation: none;
+}
+:root[data-motion="reduced"] .sp,
+:root[data-motion="reduced"] .vm-dot,
+:root[data-motion="reduced"] .rc-dot {
+  animation: none;
+  opacity: 0.8;
+}
+:root[data-motion="reduced"] .sk::after {
+  animation: none;
+  display: none;
+}
+:root[data-motion="reduced"] .mm {
+  animation-name: m-fade;
+}

@@ -38,7 +38,7 @@ export async function compose(options: ComposeOptions = {}): Promise<Composed> {
   return {
     engine,
     index,
-    conversations: openConversations(answerConfig.conversationsDir),
+    conversations: openConversations(answerConfig.conversationsDir, { tracesDir: answerConfig.tracesDir }),
     close: () =>
       (closing ??= engine.close().then(
         () => index.close(),

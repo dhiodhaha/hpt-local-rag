@@ -1,4 +1,4 @@
-import { emptyAnswer, foldAnswer, type Answer, type AnswerEvent, type Evidence, type Outcome, type Route, type SourceCard } from "@hpt/server/client";
+import { emptyAnswer, foldAnswer, type Answer, type AnswerEvent, type Evidence, type OpenedTurn, type Outcome, type Route, type SourceCard } from "@hpt/server/client";
 
 /**
  * Everything the answer screen knows about one question, as a fold over that question's events. "Verifying", "rechecking", "skeleton",
@@ -58,3 +58,5 @@ export function reduceRun(run: Run, event: AnswerEvent): Run {
 }
 
 export const runOf = (events: readonly AnswerEvent[]): Run => events.reduce(reduceRun, emptyRun());
+
+export const storedRun = (turn: OpenedTurn): Run => ({ attempt: 1, sources: turn.sources, evidence: null, answer: turn.answer, summaryDone: true, fallback: null, restart: null, outcome: { kind: "delivered" } });

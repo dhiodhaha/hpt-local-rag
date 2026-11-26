@@ -1,11 +1,10 @@
-import type { PassageId, Prose } from "@hpt/server/client";
+import type { PassageId, Prose, ProseSpan } from "@hpt/server/client";
 
 export type Segment =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "cite"; readonly word: string; readonly passages: readonly PassageId[] | null; readonly after: string };
 
 const PUNCTUATION = /^[.,;:!?)”"]+/;
-const TAIL_WORDS = 4;
 
 /**
  * Splits prose so a mark stays on the line with the word before it and the punctuation after it, as in the Doop frames. Text is
@@ -36,10 +35,46 @@ export function segmentsOf(spans: Prose): Segment[] {
   return out.filter((segment) => segment.kind === "cite" || segment.text !== "");
 }
 
-/** The last few words of a still-streaming summary, which the frame draws faded. */
-export function splitTail(text: string): { readonly lead: string; readonly tail: string } {
-  const parts = text.split(/(\s+)/);
-  const keep = Math.max(0, parts.length - TAIL_WORDS * 2);
-  const lead = parts.slice(0, keep).join("");
-  return { lead, tail: text.slice(lead.length) };
+export const textLength = (spans: Prose): number => spans.reduce((sum, span) => sum + (span.kind === "text" ? span.text.length : 0), 0);
+
+function snapToWord(text: string, cut: number): number {
+  if (cut <= 0 || cut >= text.length) return Math.max(0, Math.min(cut, text.length));
+  if (/\s/.test(text.charAt(cut - 1)) || /\s/.test(text.charAt(cut))) return cut;
+  const space = Math.max(text.lastIndexOf(" ", cut - 1), text.lastIndexOf("\n", cut - 1));
+  return space + 1;
+}
+
+/** A citation appears only when every word before it has, so a number never arrives ahead of the sentence it belongs to. */
+export function revealProse(spans: Prose, chars: number): Prose {
+  const out: ProseSpan[] = [];
+  let left = chars;
+  for (const span of spans) {
+    if (span.kind === "cite") {
+      out.push(span);
+      continue;
+    }
+    if (left >= span.text.length) {
+      out.push(span);
+      left -= span.text.length;
+      continue;
+    }
+    const cut = snapToWord(span.text, left);
+    if (cut > 0) out.push({ kind: "text", text: span.text.slice(0, cut) });
+    break;
+  }
+  return out;
+}
+
+export const MAX_STEP_MS = 100;
+
+/** Once the answer has arrived and passed its checks, the text still hidden shows within this time. */
+export const CATCH_UP_MS = 400;
+
+/** The reveal rate after the answer is complete: fast enough to finish within CATCH_UP_MS, never slower than the normal rate. */
+export function catchUpCps(remaining: number, cps: number): number {
+  return Math.max(cps, (Math.max(remaining, 0) * 1000) / CATCH_UP_MS);
+}
+
+export function advanceReveal(shown: number, total: number, dtMs: number, cps: number): number {
+  return Math.min(total, shown + (cps * Math.min(Math.max(dtMs, 0), MAX_STEP_MS)) / 1000);
 }

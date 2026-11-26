@@ -96,45 +96,6 @@
 .grp .count {
   background: var(--color-ground);
 }
-.caret {
-  display: inline-block;
-  width: 2px;
-  height: 1.05em;
-  margin-left: 3px;
-  vertical-align: -3px;
-  background: var(--color-accent);
-  border-radius: 1px;
-  animation: cb 1s steps(2) infinite;
-}
-@keyframes cb {
-  50% {
-    opacity: 0;
-  }
-}
-.fade {
-  color: color-mix(in srgb, var(--color-ink) 45%, var(--color-surface));
-}
-.sk {
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, var(--color-rule) 0%, var(--color-ground) 50%, var(--color-rule) 100%);
-  background-size: 200% 100%;
-  animation: sh 1.6s ease-in-out infinite;
-}
-@keyframes sh {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: -100% 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .caret,
-  .sk {
-    animation: none;
-  }
-}
-
 /* Opened Dalil and Catatan rows, from the Doop frame "Dalil — copy". Class names are prefixed so they cannot meet a component's. */
 .it-open {
   background: var(--color-surface);
@@ -287,8 +248,10 @@
   box-shadow: inset 0 0 0 1px var(--color-rule);
   cursor: pointer;
 }
-.rv-chip:hover {
-  background: var(--color-ground);
+@media (hover: hover) and (pointer: fine) {
+  .rv-chip:hover {
+    background: var(--color-ground);
+  }
 }
 
 .un .bd > .rf:first-child {
@@ -304,12 +267,22 @@
   color: var(--color-ink-muted);
   cursor: pointer;
   background: transparent;
-  transition-property: background-color, color;
-  transition-duration: 0.15s;
+  transition-property: background-color, color, scale;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
 }
-.act-btn:hover {
-  background: var(--color-surface);
-  color: var(--color-ink);
+@media (hover: hover) and (pointer: fine) {
+  .act-btn:hover {
+    background: var(--color-surface);
+    color: var(--color-ink);
+  }
+}
+.act-btn:active {
+  scale: 0.97;
+}
+.act-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 .act-btn[aria-pressed="true"] {
   background: var(--color-accent-soft);
