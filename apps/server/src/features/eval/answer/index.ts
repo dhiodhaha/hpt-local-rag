@@ -6,3 +6,7 @@ export { bootstrap, p50, p90, pairedChange } from "./noise.ts";
 export type { Interval, PairedChange } from "./noise.ts";
 export { citedOutsideRevision, score } from "./score.ts";
 export type { PassageLookup, Score, Timing } from "./score.ts";
+export { runAnswerEval, readRecords } from "./runner.ts";
+export type { Run, RunInput, RunRecord, RunSettings, StoppedBy } from "./runner.ts";
+export { GATE_TOLERANCE, HEADLINE_TARGET_MS, distOf, formatCategories, formatChecks, formatAnswerComparison, formatCost, formatGate, formatLimiter, gateOf, label, pairedHeadline, scoresOf, summarizeRun } from "./report.ts";
+export type { CategoryReport, ConfigReport, Dist, GateRule, LatencyBlock } from "./report.ts";
