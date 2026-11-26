@@ -1,6 +1,6 @@
-# ChatHPT Lokal: build plan
+# hpt-local-rag: build plan
 
-Status: being grilled, 2026-11-26. Design source: Doop canvas "ChatHPT — Answer screen revamp", page Iterasi 6 (desktop frames D6.1–D6.17).
+Status: being grilled, 2026-11-26. Design source: the Doop canvas for the answer screen revamp, page Iterasi 6 (desktop frames D6.1–D6.17). The product name is still open; the repo name is the working name. This is an independent project, not affiliated with Muhammadiyah or the ChatHPT service.
 
 Purpose: a product-engineering case study. The decisions and their reasons (schema-to-UI contract, explicit vs inferred, app-owned state, bounded search, evaluation and red-teaming) carry more weight than a speed claim.
 
@@ -48,7 +48,7 @@ Purpose: a product-engineering case study. The decisions and their reasons (sche
 | Sources before the answer | Send → Sumber panel filled | **under 0.5 s** | none until the answer is done |
 | Retrieval finds the right ruling | Recall@10 against the sources HPT cited, 152 questions | beat keyword-only search; report the number | not measurable |
 | Citations hold up | Share of citations that directly support the claim (judged, then spot-checked by hand) | at least 90% direct; analogies labelled "Disimpulkan" | follow-up cited shalat sources for a puasa question |
-| Right kind of "no" | Out-of-scope vs in-scope-without-evidence, scored separately | both at least 90% correct | "hukum nikah siri" got an out-of-scope reply |
+| Right kind of "no" | Out-of-scope vs in-scope-without-evidence, scored separately | both at least 90% correct | an in-scope question in the eval set got an out-of-scope reply |
 
 HPT's numbers come from two traced questions only (D4), so the report states them as such rather than as a benchmark.
 
@@ -137,6 +137,8 @@ Out of scope and in-scope-without-evidence are scored as separate eval sets with
 ## 7. Evaluation harness (built before the UI)
 
 All runs write JSONL traces: retrieval ms, process wait ms, time to first token, tool calls, total ms, cited IDs.
+
+Reports committed to this public repo show numbers and conversation IDs only, never the text of a question or answer from the eval set ([eval-dataset.md](eval-dataset.md)). `pnpm check:public` enforces it.
 
 | Set | Size | What it checks | Uses your Claude/Codex limits? |
 |---|---|---|---|

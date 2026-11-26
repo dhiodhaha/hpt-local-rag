@@ -7,6 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "vault:build": "pnpm --filter @hpt/server vault:build"
+    "vault:build": "pnpm --filter @hpt/server vault:build",
+    "check:public": "node scripts/check-public-safe.mjs"
   }
 }
