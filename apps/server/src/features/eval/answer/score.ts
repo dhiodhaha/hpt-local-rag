@@ -83,7 +83,7 @@ export function citedOutsideRevision(answer: CompleteAnswer): PassageId[] {
   return [...new Set(all)];
 }
 
-function matchesFictional(passage: Passage, ref: NonNullable<AnswerCase["fictionalRef"]>): boolean {
+export function matchesFictional(passage: Passage, ref: NonNullable<AnswerCase["fictionalRef"]>): boolean {
   return passage.year === ref.year && passage.number !== null && Number(passage.number) === Number(ref.number);
 }
 

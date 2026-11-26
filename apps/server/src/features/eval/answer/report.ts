@@ -268,7 +268,7 @@ const rate = (part: number, whole: number) => (whole === 0 ? "-" : `${part}/${wh
 
 export const label = (report: ConfigReport) => `${report.settings.model.replace(/^claude-/, "")} ${report.settings.effort} x${report.settings.maxExtraToolCalls}`;
 
-function table(header: readonly string[], rows: readonly (readonly string[])[]): string {
+export function table(header: readonly string[], rows: readonly (readonly string[])[]): string {
   return [`| ${header.join(" | ")} |`, `| ${header.map(() => "---").join(" | ")} |`, ...rows.map((row) => `| ${row.join(" | ")} |`)].join("\n");
 }
 
