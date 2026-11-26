@@ -20,6 +20,8 @@ function privateSnippets() {
 
 const tracked = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
 const problems = tracked.filter((file) => file === "data" || file.startsWith("data/")).map((file) => `tracked under data/: ${file}`);
+const isLocalOnly = (file) => file.split("/").some((part) => part === "traces" || part === "conversations") || file.endsWith(".jsonl");
+problems.push(...tracked.filter(isLocalOnly).map((file) => `traces, conversations and .jsonl files stay local: ${file}`));
 
 const snippets = privateSnippets();
 for (const file of tracked) {
