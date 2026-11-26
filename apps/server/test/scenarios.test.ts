@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { foldAnswer, emptyAnswer, type AnswerEvent, type Outcome } from "../src/features/answer/index.ts";
-import { SCENARIOS, SCENARIO_NAMES, recordScenario, type ScenarioName } from "../src/testing/index.ts";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { openConversations } from "../src/features/answer/index.ts";
+import { SCENARIOS, SCENARIO_NAMES, recordScenario, seedConversations, type ScenarioName } from "../src/testing/index.ts";
 
 const EXPECTED: Record<ScenarioName, Outcome["kind"]> = {
+  riwayat: "delivered",
   settled: "delivered",
   "follow-up": "delivered",
   restart: "delivered",
@@ -55,5 +60,22 @@ describe("the scenarios", () => {
 
   it("has a script for every name it lists", () => {
     assert.deepEqual(Object.keys(EXPECTED).sort(), Object.keys(SCENARIOS).sort());
+  });
+});
+
+describe("the riwayat seed", () => {
+  it("writes a fictional history over several days that the conversation store lists, searches and groups", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hpt-seed-"));
+    const now = new Date(2026, 10, 26, 13, 30);
+    await seedConversations(dir, now);
+    const conversations = openConversations(dir);
+    const summaries = conversations.summaries();
+    assert.equal(summaries.length, 7);
+    assert.equal(summaries[0]?.turns === 2 || summaries[1]?.turns === 2, true, "one conversation has a follow-up");
+    assert.ok(summaries.every((entry) => entry.sources > 0 && entry.gist !== null));
+    assert.ok(conversations.search("kompos").hits.length >= 5);
+    const inAnswers = conversations.search("dilarang").hits;
+    assert.ok(inAnswers.length > 0 && inAnswers.every((hit) => hit.where === "answer"));
+    assert.deepEqual(fs.readdirSync(dir).filter((name) => !name.endsWith(".jsonl")), []);
   });
 });

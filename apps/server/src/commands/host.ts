@@ -25,9 +25,10 @@ async function realDeps(): Promise<HostDeps> {
 }
 
 async function scenarioDeps(name: string, delayMs: number, cut: string | undefined): Promise<HostDeps> {
-  const { isScenarioName, scenarioDeps: build, SCENARIO_NAMES } = await import("../testing/index.ts");
+  const { isScenarioName, scenarioDeps: build, SCENARIO_NAMES, SCENARIOS, seedConversations } = await import("../testing/index.ts");
   if (!isScenarioName(name)) throw new Error(`unknown scenario "${name}". Scenarios: ${SCENARIO_NAMES.join(", ")}.`);
   const conversationsDir = fs.mkdtempSync(path.join(os.tmpdir(), "hpt-scenario-"));
+  if ((SCENARIOS[name] as { readonly seed?: boolean }).seed === true) await seedConversations(conversationsDir);
   return build(name, { conversationsDir, delayMs, cut });
 }
 
