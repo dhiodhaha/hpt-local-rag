@@ -1,5 +1,5 @@
 import { createEngine, loadPromptTemplate, memoryTraceSink, openConversations, type AnswerEngine, type AnswerEvent } from "../features/answer/index.ts";
-import { claudeModelOptions, type HostDeps } from "../features/host/index.ts";
+import { claudeModelOptions, createHost, type Host, type HostDeps } from "../features/host/index.ts";
 import { chunked, scriptedProvider, type Connection, type ScriptedAttempt } from "../features/providers/index.ts";
 import type { EvidenceLevel, Passage } from "../features/search/index.ts";
 import { answerConfig } from "../shared/config.ts";
@@ -18,15 +18,19 @@ const PASSAGES: readonly Passage[] = [
   makePassage(1, TEXT_ONE, { sourceType: "hpt", title: "HPT Jilid 1, Bab Kompos", number: null, year: null, locator: { volume: "Jilid 1", kitab: "Kitab Pertanian", bab: "Bab Kompos" } }),
   makePassage(2, TEXT_TWO, { sourceType: "fatwa", title: "Fatwa Tarjih Uji 2", number: "2", year: 2003 }),
   makePassage(3, "Daun kering juga dapat dibakar, tetapi pembakaran di ruang terbuka dilarang di banyak daerah.", { sourceType: "tanya_jawab", title: "Tanya Jawab Uji 3", number: "3", year: 2011 }),
+  makePassage(4, "Sampah dapur seperti kulit buah dan ampas kopi cocok dijadikan bahan kompos bila dicampur dengan daun kering.", { sourceType: "tanya_jawab", title: "Tanya Jawab Uji 4", number: "4", year: 2014 }),
+  makePassage(5, "Pupuk kandang yang sudah matang boleh dicampurkan ke dalam tumpukan kompos.", { sourceType: "penjelasan", title: "Penjelasan Uji 5", number: null, year: 2019, locator: { kitab: "Kitab Pertanian", bab: "Bab Pupuk" } }),
 ];
 
 const QUESTION = "Apakah kompos boleh dibuat dari sisa daun?";
-const UNKNOWN_REFERENCE = { as_stated: "HPT Jilid 9, Bab Kompos", note: "Tidak ada rujukan dengan nama itu di koleksi." };
+const UNKNOWN_REFERENCE = { as_stated: "HPT Jilid 9, Bab Kompos", note: "Bab ini tidak ada di koleksi." };
 const NOT_A_ANSWER = { ...GOOD_ANSWER, basis: null, headline: null, headline_short: null, summary: null, notes: [], dalil: [], quotes: [] };
+const THREE_CITED = {
+  notes: [(GOOD_ANSWER.notes as Record<string, unknown>[])[0], { ...(GOOD_ANSWER.notes as Record<string, unknown>[])[1], sources: ["S3"] }],
+};
 const RESET_FAR = "2099-01-01T00:00:00Z";
 
 type Cut = (event: AnswerEvent) => boolean;
-const field = (name: string): Cut => (event) => event.kind === "field" && event.name === name;
 
 type Scenario = {
   readonly question: string;
@@ -48,25 +52,33 @@ export const SCENARIOS = {
   /** D7.1 then D7.2: the headline is marked verifying until the summary passes its checks. */
   settled: {
     question: QUESTION,
-    script: (size) => [stream(answerJson(), size, 0)],
-    cuts: { thinking: (event) => event.kind === "sources", streaming: (event) => event.kind === "progress", verifying: field("headline") },
+    script: (size) => [stream(answerJson(THREE_CITED), size, 0)],
+    cuts: { thinking: (event) => event.kind === "sources", verifying: (event) => event.kind === "progress" && event.prose.some((span) => span.kind === "cite") },
+  },
+  /** A second question in the same conversation, for the earlier-turn card and the grouped Sumber panel. */
+  "follow-up": {
+    question: QUESTION,
+    script: (size) => [
+      stream(answerJson(THREE_CITED), size, 0),
+      stream(answerJson({ headline: "Menurut HPT, kompos yang belum matang tidak boleh dipakai.", summary: "Kompos yang belum matang tidak boleh dipakai [S2]." , notes: [], dalil: [], quotes: [] }), size, 0),
+    ],
   },
   /** D7.3: the summary fails its checks once, the calm "Memeriksa ulang sumber…" line replaces the card, the retry delivers. */
   restart: {
     question: QUESTION,
-    script: (size) => [stream(answerJson({ summary: "Kompos [S9]." }), size, 0), stream(answerJson(), size, 0)],
+    script: (size) => [stream(answerJson({ summary: "Kompos [S9]." }), size, 0), stream(answerJson(THREE_CITED), size, 0)],
     cuts: { rechecking: (event) => event.kind === "restart" },
   },
   /** D7.4: an unverified reference is released before the headline. */
   "unverified-first": {
     question: "Katanya di HPT Jilid 9, Bab Kompos, kompos itu haram. Benar?",
     script: (size) => [
-      stream(answerJson({ unverified_references: [UNKNOWN_REFERENCE], headline: "Putusan yang Anda sebut tidak ditemukan; menurut HPT, kompos boleh dibuat dari sisa daun." }), size, 0),
+      stream(answerJson({ unverified_references: [UNKNOWN_REFERENCE], headline: "Rujukan yang Anda sebut tidak ditemukan; menurut HPT, kompos boleh dibuat dari sisa daun." }), size, 0),
     ],
     cuts: { reference: (event) => event.kind === "item" && event.name === "unverified_references" },
   },
   /** D20: the Opus limit is spent and Sonnet at low effort answers. */
-  fallback: { question: QUESTION, script: (size) => [refused("rate_limited", RESET_FAR), stream(answerJson(), size, 0)] },
+  fallback: { question: QUESTION, script: (size) => [refused("rate_limited", RESET_FAR), stream(answerJson(THREE_CITED), size, 0)] },
   /** The engine emits `sources` before the type is known. With no evidence the panel must wait and then stay hidden. */
   "out-of-scope": {
     question: "Berapa harga emas hari ini?",
@@ -170,6 +182,8 @@ export function scenarioDeps(name: ScenarioName, options: ScenarioOptions & { re
     close: () => rig.engine.close(),
   };
 }
+
+export const scenarioHost = (name: ScenarioName, options: ScenarioOptions & { readonly conversationsDir: string }): Host => createHost(scenarioDeps(name, options));
 
 /** Runs the scenario to its end, or to its cut, and returns every committed event in order. For tests. */
 export async function recordScenario(name: ScenarioName, cut?: string): Promise<readonly AnswerEvent[]> {

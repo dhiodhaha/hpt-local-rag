@@ -5,6 +5,7 @@ import { SCENARIOS, SCENARIO_NAMES, recordScenario, type ScenarioName } from "..
 
 const EXPECTED: Record<ScenarioName, Outcome["kind"]> = {
   settled: "delivered",
+  "follow-up": "delivered",
   restart: "delivered",
   "unverified-first": "delivered",
   fallback: "delivered",

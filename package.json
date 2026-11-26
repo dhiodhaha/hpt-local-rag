@@ -11,8 +11,10 @@
     "check:public": "node scripts/check-public-safe.mjs",
     "hpt": "pnpm --filter @hpt/server hpt",
     "lint": "oxlint",
-    "typecheck": "pnpm --filter @hpt/server typecheck",
-    "test": "pnpm --filter @hpt/server test"
+    "dev:desktop": "pnpm --filter @hpt/desktop dev",
+    "shots": "pnpm --filter @hpt/desktop shots",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
   },
   "devDependencies": {
     "oxlint": "^1.95.0"

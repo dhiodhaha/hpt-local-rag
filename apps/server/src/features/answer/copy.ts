@@ -11,6 +11,9 @@ export const EXCEPTION_WITHHELD = "Ada satu pengecualian yang belum lolos pemeri
 
 export const RESTART = "Memeriksa ulang sumber…";
 
+/** The line under RESTART on the screen, so the engine and the UI say the same thing about why. */
+export const RESTART_WHY = "Ada bagian jawaban yang belum cocok dengan naskah sumbernya, jadi kami susun ulang.";
+
 export function modelName(id: string): string {
   const family = /opus|sonnet|haiku/i.exec(id)?.[0];
   return family === undefined ? id : `${family.charAt(0).toUpperCase()}${family.slice(1).toLowerCase()}`;

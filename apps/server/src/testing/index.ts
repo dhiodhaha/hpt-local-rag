@@ -5,5 +5,5 @@ export { ARABIC, GOOD_ANSWER, ONE, TWO, answerJson, makePassage } from "./answer
 export { fakeIndex } from "./fake-index.ts";
 export type { FakeIndex } from "./fake-index.ts";
 export { memoryPipe } from "./memory-pipe.ts";
-export { SCENARIOS, SCENARIO_NAMES, isScenarioName, recordScenario, scenarioDeps, scenarioRig } from "./scenarios.ts";
+export { SCENARIOS, SCENARIO_NAMES, isScenarioName, recordScenario, scenarioDeps, scenarioHost, scenarioRig } from "./scenarios.ts";
 export type { ScenarioName, ScenarioOptions, ScenarioRig } from "./scenarios.ts";
