@@ -23,6 +23,8 @@ type Shot = {
   readonly after?: (page: Page) => Promise<void>;
   /** The Doop frame this state is drawn from, for the review notes. */
   readonly frame: string;
+  /** Keep the operating system's motion setting instead of forcing reduced motion. */
+  readonly motion?: boolean;
 };
 
 const SHOTS: readonly Shot[] = [
@@ -54,9 +56,80 @@ const SHOTS: readonly Shot[] = [
   { file: "25-riwayat-empty", scenario: "settled", idle: true, frame: "D6.6 pertama kali" },
   { file: "26-riwayat-all", scenario: "riwayat", idle: true, after: openAll, frame: "D6.7 semua percakapan" },
   { file: "27-riwayat-all-search", scenario: "riwayat", idle: true, after: allSearch, frame: "D6.7 dengan pencarian dan filter" },
+  { file: "28-reader-from-citation", scenario: "reader", after: (page) => openFromCitation(page, 1), frame: "D6.8 dibuka dari tanda kutip 1" },
+  { file: "29-reader-from-card", scenario: "reader", after: (page) => openFromCard(page), frame: "D6.8 dibuka dari kartu Sumber" },
+  { file: "30-reader-deep", scenario: "reader", after: (page) => openFromCard(page, 2), frame: "D6.8 paragraf jauh di dalam putusan panjang" },
+  { file: "31-reader-arabic", scenario: "reader", after: (page) => openFromCitation(page, 2), frame: "D6.8 teks Arab satu baris dan di dalam kalimat" },
+  { file: "32-reader-sumber-tab", scenario: "reader", after: openSumberTab, frame: "D6.8 tab Sumber" },
+  { file: "33-reader-toc-jump", scenario: "reader", after: jumpToLastBagian, frame: "D6.8 pindah bagian dari Daftar isi" },
+  { file: "34-reader-revised", scenario: "reader-revised", after: (page) => openFromCard(page), frame: "D6.9 putusan direvisi" },
+  { file: "35-reader-revised-passages", scenario: "reader-revised", after: openRevisedPassages, frame: "D6.9 paragraf yang diubah" },
+  { file: "36-reader-newer-note", scenario: "reader-revised", after: openNewerNote, frame: "D6.9 Buka putusan terbaru" },
+  { file: "37-reader-entering", scenario: "reader", after: enteringWithMotion, motion: true, frame: "gerak masuk, 90 ms setelah dibuka" },
+  { file: "39-sources-card-hover", scenario: "settled", after: hoverSecondCard, frame: "kartu Sumber yang kini membuka pembaca: sorotan di bawah kursor" },
+  { file: "38-reader-closed-focus", scenario: "reader", after: closeWithEscape, frame: "Esc menutup, fokus kembali ke tanda kutip" },
 ];
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+async function openFromCitation(page: Page, number: number): Promise<void> {
+  await page.locator("[data-card='answer'] .c", { hasText: new RegExp(`^${number}$`) }).first().click();
+  await page.locator("[data-reader][data-load='ready']").waitFor();
+  await page.waitForTimeout(500);
+}
+
+async function openFromCard(page: Page, index = 0): Promise<void> {
+  await page.locator("[data-source]").nth(index).click();
+  await page.locator("[data-reader][data-load='ready']").waitFor();
+  await page.waitForTimeout(500);
+}
+
+async function openSumberTab(page: Page): Promise<void> {
+  await openFromCitation(page, 1);
+  await page.getByRole("tab", { name: /Sumber/ }).click();
+  await page.waitForTimeout(300);
+}
+
+async function jumpToLastBagian(page: Page): Promise<void> {
+  await openFromCitation(page, 1);
+  await page.locator(".toc-row").last().click();
+  await page.waitForTimeout(400);
+}
+
+async function openRevisedPassages(page: Page): Promise<void> {
+  await openFromCard(page);
+  await page.locator(".toc-row").last().click();
+  await page.waitForTimeout(400);
+}
+
+async function openNewerNote(page: Page): Promise<void> {
+  await openFromCard(page);
+  await page.getByRole("button", { name: "Buka putusan terbaru" }).click();
+  await page.locator("[data-reader='putusan/uji-istihadah-baru'][data-load='ready']").waitFor();
+  await page.waitForTimeout(400);
+}
+
+async function enteringWithMotion(page: Page): Promise<void> {
+  await page.locator("[data-card='answer'] .c").first().click();
+  await page.locator(".rd").waitFor();
+  await page.evaluate(() =>
+    document.querySelector(".rd")?.getAnimations({ subtree: true }).forEach((animation) => {
+      animation.pause();
+      animation.currentTime = 90;
+    }),
+  );
+}
+
+async function hoverSecondCard(page: Page): Promise<void> {
+  await page.locator("[data-source]").nth(1).hover();
+  await page.waitForTimeout(250);
+}
+
+async function closeWithEscape(page: Page): Promise<void> {
+  await openFromCitation(page, 2);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+}
 
 async function openModelMenu(page: Page): Promise<void> {
   await page.getByRole("button", { name: /Opus/ }).click();
@@ -120,7 +193,7 @@ async function allSearch(page: Page): Promise<void> {
 
 const { ELECTRON_RENDERER_URL: _dev, ...env } = process.env;
 
-async function withApp<T>(args: string[], run: (app: ElectronApplication, page: Page) => Promise<T>): Promise<T> {
+async function withApp<T>(args: string[], reduced: boolean, run: (app: ElectronApplication, page: Page) => Promise<T>): Promise<T> {
   const app = await electron.launch({
     executablePath: electronPath as unknown as string,
     args: [appDir, ...args],
@@ -129,7 +202,7 @@ async function withApp<T>(args: string[], run: (app: ElectronApplication, page: 
   try {
     const page = await app.firstWindow();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900));
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.emulateMedia({ reducedMotion: reduced ? "reduce" : "no-preference" });
     await page.locator("textarea").waitFor();
     await page.locator("[data-host='ready']").waitFor({ timeout: 30_000 });
     return await run(app, page);
@@ -158,7 +231,7 @@ async function main(): Promise<void> {
     if (only !== null && !shot.file.startsWith(only ?? "")) continue;
     const launchArgs = shot.scenario === null ? [] : ["--scenario", shot.scenario, "--delay-ms", "0", ...(shot.cut === undefined ? [] : ["--cut", shot.cut])];
     const target = path.join(outDir, `${shot.file}.png`);
-    await withApp(launchArgs, async (_app, page) => {
+    await withApp(launchArgs, shot.motion !== true, async (_app, page) => {
       if (shot.scenario !== null && shot.idle !== true) {
         await ask(page, SCENARIOS[shot.scenario].question, shot.cut !== undefined);
         if (shot.followUp !== undefined) await ask(page, shot.followUp, false);

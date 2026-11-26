@@ -288,3 +288,19 @@
   background: var(--color-accent-soft);
   color: var(--color-accent);
 }
+.scard[role="button"] {
+  cursor: pointer;
+  outline: none;
+  transition-property: background-color;
+  transition-duration: 120ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .scard[role="button"]:hover {
+    background: color-mix(in srgb, var(--color-ink) 4%, var(--color-surface));
+  }
+}
+.scard[role="button"]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

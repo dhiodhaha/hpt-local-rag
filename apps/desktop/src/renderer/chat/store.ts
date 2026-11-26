@@ -1,5 +1,5 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
-import type { AnswerEvent, AskCall, ConversationId, ConversationSummary, HptClient, OpenedTurn, PassageId, Scope, SearchResult } from "@hpt/server/client";
+import { noteIdOf, type AnswerEvent, type AskCall, type ConversationId, type ConversationSummary, type HptClient, type NoteId, type OpenedTurn, type Passage, type PassageId, type Scope, type SearchResult } from "@hpt/server/client";
 import { emptyRun, reduceRun, storedRun, type Run } from "./run.ts";
 
 /**
@@ -28,6 +28,18 @@ export type History = { readonly state: "loading" | "ready" | "failed"; readonly
 
 export type Search = { readonly open: boolean; readonly query: string; readonly settled: string | null; readonly result: SearchResult | null };
 
+/** The reader: which passage of which turn's answer it was opened from, and the note it shows. Null when it is closed. */
+export type ReaderLoad = { readonly state: "loading" } | { readonly state: "ready"; readonly passages: readonly Passage[] } | { readonly state: "failed" };
+
+export type Reader = {
+  /** The turn whose answer says what is cited. The reader reads that turn's run from `turns`, so a running answer keeps filling it. */
+  readonly turn: string;
+  readonly noteId: NoteId;
+  /** The passage to show and mark as open. */
+  readonly passage: PassageId;
+  readonly load: ReaderLoad;
+};
+
 export type RowMenu = { readonly conversation: ConversationId; readonly x: number; readonly y: number };
 
 export type ChatState = {
@@ -37,8 +49,7 @@ export type ChatState = {
   readonly draft: string;
   /** null is the host's default route. A manual pick is remembered for the session. */
   readonly choice: string | null;
-  /** The passage a CiteMark or Sumber card has open. */
-  readonly openSource: PassageId | null;
+  readonly reader: Reader | null;
   readonly screen: Screen;
   readonly history: History;
   readonly search: Search;
@@ -51,7 +62,12 @@ export type ChatState = {
 export type ChatActions = {
   setDraft(text: string): void;
   chooseModel(model: string | null): void;
-  selectSource(id: PassageId | null): void;
+  /** Opens the note `passage` belongs to, at that passage. `turn` is the answer that cited it. */
+  openReader(turn: string, passage: PassageId): void;
+  /** Moves the open reader to another passage: in the same note at once, in another note after it loads. */
+  showPassage(passage: PassageId): void;
+  retryReader(): void;
+  closeReader(): void;
   /** Does nothing while the last turn is still running: one ask at a time. */
   send(question: string): void;
   /** Cancelling drops the turn and puts the question back in the composer. Nothing was stored, so the history is unchanged. */
@@ -151,6 +167,17 @@ export function createChatStore(client: HptClient, options: StoreOptions = {}): 
       });
     }, options.schedule);
 
+    /** A note that arrives after the reader moved on is dropped: the answer to the question asked last wins. */
+    async function loadReader(noteId: NoteId): Promise<void> {
+      let load: ReaderLoad;
+      try {
+        load = { state: "ready", passages: (await client.request("passages", { noteId })).passages };
+      } catch {
+        load = { state: "failed" };
+      }
+      set((state) => (state.reader?.noteId === noteId && state.reader.load.state === "loading" ? { reader: { ...state.reader, load } } : state));
+    }
+
     function start(turn: Turn): void {
       const entry: NonNullable<typeof running> = { key: turn.key, call: null, cancelled: false };
       running = entry;
@@ -177,7 +204,7 @@ export function createChatStore(client: HptClient, options: StoreOptions = {}): 
       turns: [],
       draft: "",
       choice: null,
-      openSource: null,
+      reader: null,
       screen: "chat",
       history: { state: "loading", conversations: [] },
       search: NO_SEARCH,
@@ -187,12 +214,33 @@ export function createChatStore(client: HptClient, options: StoreOptions = {}): 
       opening: null,
       setDraft: (draft) => set({ draft }),
       chooseModel: (choice) => set({ choice }),
-      selectSource: (id) => set({ openSource: id }),
+      openReader(turn, passage) {
+        set({ reader: { turn, noteId: noteIdOf(passage), passage, load: { state: "loading" } } });
+        void loadReader(noteIdOf(passage));
+      },
+      showPassage(passage) {
+        const { reader } = get();
+        if (reader === null) return;
+        const noteId = noteIdOf(passage);
+        if (noteId === reader.noteId && reader.load.state === "ready") {
+          set({ reader: { ...reader, passage } });
+          return;
+        }
+        set({ reader: { ...reader, noteId, passage, load: { state: "loading" } } });
+        void loadReader(noteId);
+      },
+      retryReader() {
+        const { reader } = get();
+        if (reader === null) return;
+        set({ reader: { ...reader, load: { state: "loading" } } });
+        void loadReader(reader.noteId);
+      },
+      closeReader: () => set({ reader: null }),
       send(question) {
         const text = question.trim();
         if (text === "" || isBusy(get())) return;
         const turn: Turn = { key: newKey(), question: text, at: now(), scope: null, requested: get().choice, run: emptyRun(), fresh: true };
-        set((state) => ({ turns: [...state.turns, turn], draft: "", openSource: null, screen: "chat" }));
+        set((state) => ({ turns: [...state.turns, turn], draft: "", reader: null, screen: "chat" }));
         start(turn);
       },
       cancel() {
@@ -217,7 +265,7 @@ export function createChatStore(client: HptClient, options: StoreOptions = {}): 
       newConversation() {
         if (isBusy(get())) return;
         clearTimeout(searchTimer);
-        set({ conversation: null, turns: [], draft: "", openSource: null, screen: "chat", search: NO_SEARCH, menu: null });
+        set({ conversation: null, turns: [], draft: "", reader: null, screen: "chat", search: NO_SEARCH, menu: null });
       },
       async refreshHistory() {
         try {
@@ -238,7 +286,7 @@ export function createChatStore(client: HptClient, options: StoreOptions = {}): 
         try {
           const opened = await client.request("open", { conversation: id });
           if (get().opening !== id) return;
-          set({ conversation: id, turns: opened.turns.map(turnOfStored), draft: "", openSource: null, screen: "chat", search: NO_SEARCH, menu: null, opening: null });
+          set({ conversation: id, turns: opened.turns.map(turnOfStored), draft: "", reader: null, screen: "chat", search: NO_SEARCH, menu: null, opening: null });
         } catch {
           set({ opening: null });
           void get().refreshHistory();

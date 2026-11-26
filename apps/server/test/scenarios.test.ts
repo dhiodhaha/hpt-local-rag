@@ -9,6 +9,8 @@ import { SCENARIOS, SCENARIO_NAMES, recordScenario, seedConversations, type Scen
 
 const EXPECTED: Record<ScenarioName, Outcome["kind"]> = {
   riwayat: "delivered",
+  reader: "delivered",
+  "reader-revised": "delivered",
   settled: "delivered",
   "follow-up": "delivered",
   restart: "delivered",

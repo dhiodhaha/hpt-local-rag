@@ -9,6 +9,7 @@
 @import "./screen.css";
 @import "./motion.css";
 @import "./riwayat.css";
+@import "./reader.css";
 
 @layer base {
   * {

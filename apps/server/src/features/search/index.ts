@@ -4,7 +4,7 @@ export type { Embedder, EmbedderSource } from "./embed.ts";
 export { levelOf, RANK_POLICY } from "./rank.ts";
 export type { EvidenceFloors } from "./rank.ts";
 export { openIndex, IndexUnavailableError } from "./searcher.ts";
-export { noteIdOf, statusOf } from "./types.ts";
+export { noteIdOf, statusOf } from "./client.ts";
 export type {
   BuildOptions,
   BuildReport,
