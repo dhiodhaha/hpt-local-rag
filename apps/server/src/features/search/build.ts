@@ -2,12 +2,24 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { readVault, type NoteId, type VaultNote } from "../corpus/index.ts";
-import { all, get, inTransaction, openDb, type Db } from "../../shared/db.ts";
+import { all, get, inTransaction, openDb, vectorBlob, type Db } from "../../shared/db.ts";
 import { chunkBody, sectionLabel, CHUNKER_VERSION, type Chunk } from "./chunk.ts";
+import { embedAll, loadEmbedder, passageInput, type Embedder } from "./embed.ts";
+import { openEmbeddingCache } from "./embedding-cache.ts";
 import { fold, FOLD_VERSION } from "./fold.ts";
 import { describeNote, describePassage, UnknownFolderError, type NoteMeta, type PassageMeta } from "./putusan-meta.ts";
-import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
-import { SOURCE_TYPES, passageId, type BuildOptions, type BuildReport, type PassageId, type SourceType } from "./types.ts";
+import { SCHEMA_SQL, SCHEMA_VERSION, vectorSchemaSql } from "./schema.ts";
+import {
+  SOURCE_TYPES,
+  passageId,
+  type BuildOptions,
+  type BuildReport,
+  type Channel,
+  type EmbeddingReport,
+  type PassageId,
+  type SourceType,
+  type TokenSummary,
+} from "./types.ts";
 
 export class BuildError extends Error {
   readonly problems: readonly string[];
@@ -77,9 +89,11 @@ export function planVault(notes: readonly VaultNote[]): NotePlan[] {
   return plans;
 }
 
-function fingerprintOf(plans: readonly NotePlan[]): string {
+/** A keyword-only index keeps the fingerprint it had before vectors existed. */
+function fingerprintOf(plans: readonly NotePlan[], embedder: Embedder | null): string {
   const hash = createHash("sha256");
   hash.update(`schema ${SCHEMA_VERSION} chunker ${CHUNKER_VERSION} fold ${FOLD_VERSION}\n`);
+  if (embedder) hash.update(`vector ${embedder.id} ${embedder.dims}\n`);
   for (const plan of plans) {
     if (plan.kind === "putusan") {
       for (const passage of plan.passages) hash.update(`${passage.id}:${passage.textHash}\n`);
@@ -142,7 +156,21 @@ function applyRevisions(db: Db, rows: readonly RevisionRow[]): void {
   }
 }
 
-function writeIndex(db: Db, plans: readonly NotePlan[], revisions: readonly RevisionRow[]): { mapLinks: number } {
+/** In rowid order: the i-th citable passage of the plans is passages.rowid i + 1, and likewise for map passages. */
+type PlanVectors = { citable: Float32Array[]; map: Float32Array[] };
+
+function vectorWriter(db: Db, vectors: PlanVectors | null): { passage(rowid: number): void; map(rowid: number): void } {
+  if (vectors === null) return { passage: () => undefined, map: () => undefined };
+  const insertPassage = db.prepare("INSERT INTO putusan_vec (rowid, embedding) VALUES (?, ?)");
+  const insertMap = db.prepare("INSERT INTO map_vec (rowid, embedding) VALUES (?, ?)");
+  // vec0 takes a rowid only as an integer, and better-sqlite3 binds a JS number as a float.
+  return {
+    passage: (rowid) => void insertPassage.run(BigInt(rowid), vectorBlob(vectors.citable[rowid - 1] as Float32Array)),
+    map: (rowid) => void insertMap.run(BigInt(rowid), vectorBlob(vectors.map[rowid - 1] as Float32Array)),
+  };
+}
+
+function writeIndex(db: Db, plans: readonly NotePlan[], revisions: readonly RevisionRow[], vectors: PlanVectors | null): { mapLinks: number } {
   const noteRowids = new Map<NoteId, number>();
   const insertNote = db.prepare(
     "INSERT INTO notes (rowid, id, collection, title, source_url, folder, year, number, published_in) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -155,6 +183,7 @@ function writeIndex(db: Db, plans: readonly NotePlan[], revisions: readonly Revi
   const insertMapPassage = db.prepare("INSERT INTO map_passages (rowid, note_rowid, ordinal, section, text) VALUES (?, ?, ?, ?, ?)");
   const insertMapFts = db.prepare("INSERT INTO map_fts (rowid, title, section, body) VALUES (?, ?, ?, ?)");
   const insertLink = db.prepare("INSERT INTO map_links (map_rowid, note_rowid, position) VALUES (?, ?, ?)");
+  const addVector = vectorWriter(db, vectors);
 
   let passageRowid = 0;
   let mapRowid = 0;
@@ -174,12 +203,14 @@ function writeIndex(db: Db, plans: readonly NotePlan[], revisions: readonly Revi
           const { chunk } = passage;
           insertPassage.run(passageRowid, passage.id, noteRowid, chunk.ordinal, passage.section, passage.meta.sourceType, passage.meta.parent, JSON.stringify(passage.meta.locator), chunk.text, passage.textHash, chunk.wordCount);
           insertPassageFts.run(passageRowid, fold(plan.note.title), fold(passage.section ?? ""), fold(chunk.text));
+          addVector.passage(passageRowid);
         }
       } else {
         for (const { chunk, section, links } of plan.chunks) {
           mapRowid += 1;
           insertMapPassage.run(mapRowid, noteRowid, chunk.ordinal, section, chunk.text);
           insertMapFts.run(mapRowid, fold(plan.note.title), fold(section ?? ""), fold(chunk.text));
+          addVector.map(mapRowid);
           links.forEach((target, position) => {
             insertLink.run(mapRowid, noteRowids.get(target) as number, position);
             mapLinks += 1;
@@ -193,26 +224,29 @@ function writeIndex(db: Db, plans: readonly NotePlan[], revisions: readonly Revi
   return { mapLinks };
 }
 
-function writeMeta(db: Db, fingerprint: string): void {
+function writeMeta(db: Db, fingerprint: string, channels: readonly Channel[], embedder: Embedder | null): void {
   const insert = db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)");
   const entries: [string, string][] = [
     ["schema_version", String(SCHEMA_VERSION)],
     ["chunker_version", String(CHUNKER_VERSION)],
     ["fold_version", String(FOLD_VERSION)],
-    ["channels", JSON.stringify(["keyword"])],
+    ["channels", JSON.stringify(channels)],
     ["fingerprint", fingerprint],
     ["built_at", new Date().toISOString()],
   ];
+  if (embedder) entries.push(["embedding_model", embedder.id], ["embedding_dims", String(embedder.dims)]);
   for (const [key, value] of entries) insert.run(key, value);
 }
 
-function verifyIndex(db: Db): string[] {
+function verifyIndex(db: Db, withVectors: boolean): string[] {
   const problems: string[] = [];
   const count = (sql: string) => (get<{ n: number }>(db, sql)?.n ?? 0);
-  for (const [fts, table] of [["putusan_fts", "passages"], ["map_fts", "map_passages"]] as const) {
-    const ftsRows = count(`SELECT count(*) AS n FROM ${fts}`);
+  const paired: (readonly [string, string])[] = [["putusan_fts", "passages"], ["map_fts", "map_passages"]];
+  if (withVectors) paired.push(["putusan_vec", "passages"], ["map_vec", "map_passages"]);
+  for (const [index, table] of paired) {
+    const indexRows = count(`SELECT count(*) AS n FROM ${index}`);
     const tableRows = count(`SELECT count(*) AS n FROM ${table}`);
-    if (ftsRows !== tableRows) problems.push(`${fts} has ${ftsRows} rows but ${table} has ${tableRows}`);
+    if (indexRows !== tableRows) problems.push(`${index} has ${indexRows} rows but ${table} has ${tableRows}`);
   }
   const gaps = all<{ id: string }>(
     db,
@@ -269,6 +303,56 @@ function percentile(sorted: readonly number[], share: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))] ?? 0;
 }
 
+function embeddingInputs(plans: readonly NotePlan[]): { citable: string[]; map: string[] } {
+  const citable: string[] = [];
+  const map: string[] = [];
+  for (const plan of plans) {
+    if (plan.kind === "putusan") {
+      for (const { section, chunk } of plan.passages) citable.push(passageInput(plan.note.title, section, chunk.text));
+    } else {
+      for (const { section, chunk } of plan.chunks) map.push(passageInput(plan.note.title, section, chunk.text));
+    }
+  }
+  return { citable, map };
+}
+
+function tokenSummary(counts: readonly number[], limit: number): TokenSummary {
+  const sorted = [...counts].sort((a, b) => a - b);
+  return {
+    passages: counts.length,
+    overLimit: counts.filter((count) => count > limit).length,
+    p50: percentile(sorted, 0.5),
+    p90: percentile(sorted, 0.9),
+    max: sorted[sorted.length - 1] ?? 0,
+  };
+}
+
+type VectorBuild = { embedder: Embedder; cacheFile: string };
+
+async function vectorBuildOf(options: BuildOptions): Promise<VectorBuild | null> {
+  if (!options.channels.includes("vector")) return null;
+  if (options.embedding === undefined) throw new Error("the vector channel needs embedding options");
+  const { cacheFile, modelDir } = options.embedding;
+  return { cacheFile, embedder: options.embedding.embedder ?? (await loadEmbedder({ modelDir, allowDownload: true })) };
+}
+
+async function embedPlans(plans: readonly NotePlan[], { embedder, cacheFile }: VectorBuild, log: (message: string) => void): Promise<{ vectors: PlanVectors; report: EmbeddingReport }> {
+  const inputs = embeddingInputs(plans);
+  const cache = openEmbeddingCache(cacheFile);
+  try {
+    log(`embedding ${inputs.citable.length + inputs.map.length} passages with ${embedder.id}`);
+    const embedded = await embedAll([...inputs.citable, ...inputs.map], { embedder, cache, onProgress: log });
+    const vectors = { citable: embedded.vectors.slice(0, inputs.citable.length), map: embedded.vectors.slice(inputs.citable.length) };
+    const tokens = {
+      citable: tokenSummary(inputs.citable.map((input) => embedder.tokenCount(input)), embedder.maxTokens),
+      map: tokenSummary(inputs.map.map((input) => embedder.tokenCount(input)), embedder.maxTokens),
+    };
+    return { vectors, report: { model: embedder.id, dims: embedder.dims, cached: embedded.cached, embedded: embedded.embedded, ms: embedded.ms, tokens, cacheBytes: fs.statSync(cacheFile).size } };
+  } finally {
+    cache.close();
+  }
+}
+
 function summarize(plans: readonly NotePlan[]): Pick<BuildReport, "passagesBySourceType" | "wordCount" | "bookSections" | "unmatchedTocTitles"> {
   const passagesBySourceType = Object.fromEntries(SOURCE_TYPES.map((type) => [type, 0])) as Record<SourceType, number>;
   const words: number[] = [];
@@ -311,20 +395,23 @@ export async function buildIndex(options: BuildOptions): Promise<BuildReport> {
   const notes = await readVault(options.vaultDir);
   log(`chunking ${notes.length} notes`);
   const plans = planVault(notes);
-  const fingerprint = fingerprintOf(plans);
   const revisions = readRevisions(options.revisionsFile);
+  const vector = await vectorBuildOf(options);
+  const fingerprint = fingerprintOf(plans, vector?.embedder ?? null);
+  const embedded = vector ? await embedPlans(plans, vector, log) : null;
 
   fs.mkdirSync(path.dirname(options.outFile), { recursive: true });
   fs.rmSync(nextFile, { force: true });
-  const db = openDb(nextFile, { readonly: false });
+  const db = openDb(nextFile, { readonly: false, vec: vector !== null });
   let mapLinks = 0;
   try {
     db.exec("PRAGMA page_size = 8192; PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;");
     db.exec(SCHEMA_SQL);
+    if (vector) db.exec(vectorSchemaSql(vector.embedder.dims));
     log("writing the index");
-    ({ mapLinks } = writeIndex(db, plans, revisions));
-    writeMeta(db, fingerprint);
-    const problems = verifyIndex(db);
+    ({ mapLinks } = writeIndex(db, plans, revisions, embedded?.vectors ?? null));
+    writeMeta(db, fingerprint, options.channels, vector?.embedder ?? null);
+    const problems = verifyIndex(db, vector !== null);
     if (problems.length > 0) throw new BuildError(problems);
   } catch (error) {
     db.close();
@@ -340,8 +427,10 @@ export async function buildIndex(options: BuildOptions): Promise<BuildReport> {
   const summary = summarize(plans);
   const report: BuildReport = {
     fingerprint,
+    channels: options.channels,
     ms: Date.now() - started,
     bytes: fs.statSync(options.outFile).size,
+    embedding: embedded?.report ?? null,
     counts: {
       notes: notes.length,
       passages: Object.values(summary.passagesBySourceType).reduce((total, n) => total + n, 0),

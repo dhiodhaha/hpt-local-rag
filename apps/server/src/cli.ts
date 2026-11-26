@@ -2,24 +2,35 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { formatReport, runRetrievalEval } from "./features/eval/index.ts";
-import { buildIndex, openIndex, statusOf, type BuildReport, type SearchResult } from "./features/search/index.ts";
+import { buildIndex, loadEmbedder, openIndex, statusOf, type BuildReport, type Channel, type SearchResult } from "./features/search/index.ts";
 import { config } from "./shared/config.ts";
 
 const USAGE = `Usage:
-  hpt build [--vault <dir>] [--out <file>]
-  hpt search "<question>" [--limit 10] [--note <note id>] [--json]
+  hpt build [--vault <dir>] [--out <file>] [--keyword-only]
+  hpt search "<question>" [--limit 10] [--note <note id>] [--channels keyword,vector] [--json]
   hpt eval retrieval [--out <dir>] [--misses 30]`;
 
 function printBuild(report: BuildReport, outFile: string): void {
   const mb = (report.bytes / 1_048_576).toFixed(1);
-  console.log(`Built ${outFile} in ${(report.ms / 1000).toFixed(1)} s, ${mb} MB, fingerprint ${report.fingerprint.slice(0, 12)}`);
+  console.log(`Built ${outFile} (${report.channels.join(" + ")}) in ${(report.ms / 1000).toFixed(1)} s, ${mb} MB, fingerprint ${report.fingerprint.slice(0, 12)}`);
   console.log(`${report.counts.notes} notes, ${report.counts.passages} citable passages, ${report.counts.mapPassages} map passages, ${report.counts.mapLinks} map links`);
   console.log("Citable passages by source_type:", report.passagesBySourceType);
   const { p10, p50, p90, max } = report.wordCount;
   console.log(`Words per citable passage: p10 ${p10}, p50 ${p50}, p90 ${p90}, max ${max}`);
+  if (report.embedding) {
+    const { embedding } = report;
+    const cacheMb = (embedding.cacheBytes / 1_048_576).toFixed(1);
+    console.log(`Embeddings (${embedding.model}, ${embedding.dims} dims): ${embedding.embedded} computed in ${(embedding.ms / 1000).toFixed(1)} s, ${embedding.cached} from the cache, cache file ${cacheMb} MB`);
+    for (const kind of ["citable", "map"] as const) {
+      const tokens = embedding.tokens[kind];
+      console.log(`Tokens per ${kind} passage: p50 ${tokens.p50}, p90 ${tokens.p90}, max ${tokens.max}; ${tokens.overLimit} of ${tokens.passages} exceed the model's limit`);
+    }
+  }
   console.log(report.drift === null ? "Drift: no earlier comparable index" : `Drift: ${report.drift.added} added, ${report.drift.removed} removed, ${report.drift.changed.length} changed`);
   console.log(`D12a hand-check: ${report.bookSections.length} compiled-book sections and ${report.unmatchedTocTitles.length} notes with unmatched table-of-contents titles are in ${outFile}.report.json`);
 }
+
+const MAX_LINK_REASONS = 3;
 
 function printSearch(result: SearchResult): void {
   result.hits.forEach((hit, index) => {
@@ -27,7 +38,9 @@ function printSearch(result: SearchResult): void {
     const superseded = statusOf(passage) === "superseded" ? "superseded" : null;
     const label = [passage.sourceType, passage.year, passage.number ? `no. ${passage.number}` : null, superseded].filter((part) => part !== null).join(" · ");
     console.log(`${index + 1}. [${label}] ${passage.title}  #${passage.ordinal}  ${hit.score.toFixed(4)}`);
-    const reasons = hit.reasons.map((reason) => (reason.kind === "direct" ? `${reason.channel} #${reason.rank}` : `via ${reason.from.noteId} (#${reason.rank})`));
+    const direct = hit.reasons.flatMap((reason) => (reason.kind === "direct" ? [`${reason.channel} #${reason.rank}`] : []));
+    const linked = hit.reasons.flatMap((reason) => (reason.kind === "via_link" ? [`via ${reason.from.noteId} (${reason.channel} #${reason.rank})`] : []));
+    const reasons = [...direct, ...linked.slice(0, MAX_LINK_REASONS), ...(linked.length > MAX_LINK_REASONS ? [`and ${linked.length - MAX_LINK_REASONS} more links`] : [])];
     const identical = hit.duplicates.length > 0 ? ` · ${hit.duplicates.length} identical collapsed` : "";
     console.log(`   ${reasons.join(" · ")}${identical}`);
     if (passage.section) console.log(`   section: ${passage.section}`);
@@ -35,8 +48,21 @@ function printSearch(result: SearchResult): void {
   });
   const { evidence } = result;
   const via = evidence.signals.topIsDirect ? "direct" : "via link";
-  console.log(`evidence ${evidence.level} (coverage ${evidence.signals.topCoverage.toFixed(2)}, ${via}), keyword ${result.ms.keyword.toFixed(1)} ms, total ${result.ms.total.toFixed(1)} ms`);
+  const agreement = evidence.signals.channelAgreement === null ? "" : `, channels agree on ${(evidence.signals.channelAgreement * 100).toFixed(0)}% of the top hits`;
+  const { ms } = result;
+  const timings = `keyword ${ms.keyword.toFixed(1)} ms, query embedding ${ms.embed.toFixed(1)} ms, vector ${ms.vector.toFixed(1)} ms, total ${ms.total.toFixed(1)} ms`;
+  console.log(`evidence ${evidence.level} (coverage ${evidence.signals.topCoverage.toFixed(2)}, ${via}${agreement}), ${timings}`);
   if (result.leads.length > 0) console.log(`leads: ${result.leads.map((lead) => lead.noteId).join(", ")}`);
+}
+
+const embedder = () => loadEmbedder({ modelDir: config.modelDir, allowDownload: false });
+
+function parseChannels(text: string | undefined): Channel[] | undefined {
+  if (text === undefined) return undefined;
+  const names = text.split(",").map((name) => name.trim());
+  const unknown = names.filter((name) => name !== "keyword" && name !== "vector");
+  if (unknown.length > 0) throw new Error(`unknown channel ${unknown.join(", ")}. Use keyword, vector or keyword,vector.`);
+  return names as Channel[];
 }
 
 function fail(message: string): number {
@@ -47,11 +73,13 @@ function fail(message: string): number {
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   if (command === "build") {
-    const { values } = parseArgs({ args: rest, options: { vault: { type: "string" }, out: { type: "string" } } });
+    const { values } = parseArgs({ args: rest, options: { vault: { type: "string" }, out: { type: "string" }, "keyword-only": { type: "boolean" } } });
     const outFile = values.out ?? config.indexFile;
     const report = await buildIndex({
       vaultDir: values.vault ?? config.vaultDir,
       outFile,
+      channels: values["keyword-only"] ? ["keyword"] : ["keyword", "vector"],
+      embedding: { cacheFile: config.embeddingCacheFile, modelDir: config.modelDir },
       revisionsFile: config.revisionsFile,
       onProgress: (message) => console.log(message),
     });
@@ -62,14 +90,15 @@ async function main(argv: string[]): Promise<number> {
     const { values, positionals } = parseArgs({
       args: rest,
       allowPositionals: true,
-      options: { limit: { type: "string" }, note: { type: "string" }, json: { type: "boolean" } },
+      options: { limit: { type: "string" }, note: { type: "string" }, json: { type: "boolean" }, channels: { type: "string" } },
     });
     const question = positionals.join(" ").trim();
     if (question === "") return fail("Missing question.");
-    const index = openIndex({ path: config.indexFile });
+    const index = openIndex({ path: config.indexFile, embedder });
     try {
       const result = await index.search(question, {
         limit: values.limit === undefined ? undefined : Number(values.limit),
+        channels: parseChannels(values.channels),
         filter: values.note === undefined ? undefined : { noteIds: [values.note] },
       });
       if (values.json) console.log(JSON.stringify(result, null, 2));
@@ -81,7 +110,7 @@ async function main(argv: string[]): Promise<number> {
   }
   if (command === "eval" && rest[0] === "retrieval") {
     const { values } = parseArgs({ args: rest.slice(1), options: { out: { type: "string" }, misses: { type: "string" } } });
-    const index = openIndex({ path: config.indexFile });
+    const index = openIndex({ path: config.indexFile, embedder });
     try {
       const report = await runRetrievalEval({ index, qaFile: config.qaFile });
       const outDir = values.out ?? config.evalDir;

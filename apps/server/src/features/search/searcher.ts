@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import type { NoteId } from "../corpus/index.ts";
 import { all, get, openDb, placeholders, probeCapabilities, type Db } from "../../shared/db.ts";
-import { bestPassageOfNotes, keywordLists, type ChannelLists } from "./channels.ts";
+import { bestPassageOfNotes, keywordLists, vectorLists, type ChannelLists } from "./channels.ts";
 import { CHUNKER_VERSION } from "./chunk.ts";
+import type { Embedder, EmbedderSource } from "./embed.ts";
 import { contentTerms, coverage, fold, FOLD_VERSION, toFtsQuery } from "./fold.ts";
 import { fuse, judgeEvidence, notesNeedingPassage, type Fused, type ReasonDraft } from "./rank.ts";
 import { SCHEMA_VERSION } from "./schema.ts";
@@ -85,12 +86,14 @@ function readInfo(db: Db, path: string): IndexInfo {
     if (meta.get(key) !== String(expected)) throw new IndexUnavailableError(`${path} was built with another ${key}. Run \`pnpm hpt build\`.`);
   }
   const count = (table: string) => get<{ n: number }>(db, `SELECT count(*) AS n FROM ${table}`)?.n ?? 0;
+  const model = meta.get("embedding_model");
   return {
     path,
     schemaVersion: SCHEMA_VERSION,
     chunkerVersion: CHUNKER_VERSION,
     foldVersion: FOLD_VERSION,
     channels: JSON.parse(meta.get("channels") ?? "[]") as Channel[],
+    embedding: model === undefined ? null : { model, dims: Number(meta.get("embedding_dims")) },
     fingerprint: meta.get("fingerprint") ?? "",
     counts: { notes: count("notes"), passages: count("passages"), mapPassages: count("map_passages") },
   };
@@ -166,7 +169,7 @@ function toHit(fused: Fused, passages: ReadonlyMap<number, Passage>, mapInfo: Re
   };
 }
 
-async function search(db: Db, info: IndexInfo, question: string, options: SearchOptions): Promise<SearchResult> {
+async function search(db: Db, info: IndexInfo, embedder: () => Promise<Embedder>, question: string, options: SearchOptions): Promise<SearchResult> {
   const started = performance.now();
   const channels = options.channels ?? info.channels;
   for (const channel of channels) {
@@ -175,15 +178,28 @@ async function search(db: Db, info: IndexInfo, question: string, options: Search
   const terms = contentTerms(question);
   const query = toFtsQuery(terms);
 
-  const lists = [keywordLists(db, query, options.filter)];
-  const keywordMs = performance.now() - started;
+  const ms = { keyword: 0, embed: 0, vector: 0, total: 0 };
+  const lists: ChannelLists[] = [];
+  if (channels.includes("keyword")) {
+    lists.push(keywordLists(db, query, options.filter));
+    ms.keyword = performance.now() - started;
+  }
+  if (channels.includes("vector") && question.trim() !== "") {
+    const embedStarted = performance.now();
+    const vector = await (await embedder()).embedQuery(question);
+    ms.embed = performance.now() - embedStarted;
+    const searchStarted = performance.now();
+    lists.push(vectorLists(db, vector, options.filter));
+    ms.vector = performance.now() - searchStarted;
+  }
 
   const map = mapLookups(db, lists.flatMap((list) => list.map));
+  const fusionLists = options.linkExpansion === false ? lists.map((list) => ({ ...list, map: [] })) : lists;
   const citable = citableLookups(db, lists.flatMap((list) => list.citable));
-  const missing = notesNeedingPassage(lists, { citable, map: map.forRanking });
+  const missing = notesNeedingPassage(fusionLists, { citable, map: map.forRanking });
   const bestPassageOfNote = bestPassageOfNotes(db, missing, query);
   for (const [rowid, row] of citableLookups(db, [...bestPassageOfNote.values()])) citable.set(rowid, row);
-  const fused = fuse(lists, { citable, map: map.forRanking, bestPassageOfNote }, options.limit ?? DEFAULT_LIMIT);
+  const fused = fuse(fusionLists, { citable, map: map.forRanking, bestPassageOfNote }, options.limit ?? DEFAULT_LIMIT);
 
   const passages = hydrate(db, [...new Set(fused.flatMap((entry) => [entry.passageRowid, ...entry.duplicates]))]);
   const hits = fused.map((entry) => toHit(entry, passages, map.info));
@@ -192,21 +208,38 @@ async function search(db: Db, info: IndexInfo, question: string, options: Search
   return {
     hits,
     leads: leadsFrom(lists, map.info),
-    evidence: judgeEvidence({ fused, topCoverage }),
+    evidence: judgeEvidence({ fused, topCoverage, channels: lists.map((list) => list.channel) }),
     channels,
-    ms: { keyword: keywordMs, total: performance.now() - started },
+    ms: { ...ms, total: performance.now() - started },
+  };
+}
+
+function lazyEmbedder(info: IndexInfo, source: EmbedderSource | undefined): () => Promise<Embedder> {
+  let loaded: Promise<Embedder> | null = null;
+  return () => {
+    if (source === undefined) return Promise.reject(new Error("this index has a vector channel, so openIndex needs an embedder"));
+    loaded ??= source().then((embedder) => {
+      if (embedder.id !== info.embedding?.model) {
+        throw new IndexUnavailableError(`${info.path} was embedded with ${info.embedding?.model}, not ${embedder.id}. Run \`pnpm hpt build\`.`);
+      }
+      return embedder;
+    });
+    return loaded;
   };
 }
 
 /** Opens the index read-only. Throws IndexUnavailableError when it is missing or was built by other code. */
-export function openIndex(options: { path: string }): HptIndex {
+export function openIndex(options: { path: string; embedder?: EmbedderSource }): HptIndex {
   if (!fs.existsSync(options.path)) throw new IndexUnavailableError(`${options.path} is missing. Run \`pnpm hpt build\`.`);
-  const db = openDb(options.path, { readonly: true });
-  if (!probeCapabilities(db).fts5) throw new IndexUnavailableError("this SQLite build has no FTS5");
+  const db = openDb(options.path, { readonly: true, vec: true });
+  const capabilities = probeCapabilities(db);
+  if (!capabilities.fts5) throw new IndexUnavailableError("this SQLite build has no FTS5");
   const info = readInfo(db, options.path);
+  if (info.channels.includes("vector") && !capabilities.vec) throw new IndexUnavailableError("sqlite-vec did not load, so the vector channel is unavailable");
+  const embedder = lazyEmbedder(info, options.embedder);
   return {
     info,
-    search: (question, searchOptions = {}) => search(db, info, question, searchOptions),
+    search: (question, searchOptions = {}) => search(db, info, embedder, question, searchOptions),
     getPassages(ids) {
       if (ids.length === 0) return new Map();
       const rows = all<PassageRow>(db, `${PASSAGE_SELECT} WHERE p.id IN (${placeholders(ids.length)})`, ...ids);

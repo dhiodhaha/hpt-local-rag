@@ -11,5 +11,7 @@ export const config = {
   revisionsFile: path.join(dataDir, "revisions.json"),
   qaFile: path.join(dataDir, "qa_pairs.jsonl"),
   evalDir: path.join(dataDir, "eval"),
+  modelDir: process.env.HPT_MODEL_DIR ?? path.join(dataDir, "models"),
+  embeddingCacheFile: process.env.HPT_EMBEDDING_CACHE ?? path.join(dataDir, "cache", "embeddings.sqlite"),
   siteUrl: "https://hpt.muhammadiyah.or.id",
 };

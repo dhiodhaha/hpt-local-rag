@@ -1,4 +1,4 @@
-import { all, placeholders, type Db } from "../../shared/db.ts";
+import { all, placeholders, vectorBlob, type Db } from "../../shared/db.ts";
 import type { FtsQuery } from "./fold.ts";
 import type { Channel, SearchFilter } from "./types.ts";
 
@@ -60,6 +60,15 @@ export function keywordLists(db: Db, query: FtsQuery | null, filter: SearchFilte
     ? []
     : all<{ rowid: number }>(db, `SELECT rowid FROM map_fts WHERE map_fts MATCH ? ORDER BY ${MAP_BM25} LIMIT ${POOL.map}`, query);
   return { channel: "keyword", citable: citable.map((row) => row.rowid), map: map.map((row) => row.rowid) };
+}
+
+export function vectorLists(db: Db, vector: Float32Array, filter: SearchFilter | undefined): ChannelLists {
+  const scope = hasFilter(filter) ? scopeClause(filter as SearchFilter) : null;
+  const nearest = (table: string, pool: number, extra: string) =>
+    `SELECT rowid FROM ${table} WHERE embedding MATCH ? AND k = ${pool} ${extra} ORDER BY distance`;
+  const citable = all<{ rowid: number }>(db, nearest("putusan_vec", POOL.citable, scope ? `AND ${scope.sql}` : ""), vectorBlob(vector), ...(scope?.params ?? []));
+  const map = scope ? [] : all<{ rowid: number }>(db, nearest("map_vec", POOL.map, ""), vectorBlob(vector));
+  return { channel: "vector", citable: citable.map((row) => row.rowid), map: map.map((row) => row.rowid) };
 }
 
 /** For notes reached only through a link: the passage that best matches the question, else the first one. */

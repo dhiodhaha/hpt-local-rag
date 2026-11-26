@@ -106,7 +106,7 @@ flowchart LR
 - Filters from note metadata: kind, year, folder.
 - One-hop link expansion: a strong concept hit pulls in the putusan it links to (the restored wikilinks).
 
-**Embeddings.** `multilingual-e5-small` (384 dimensions) through transformers.js. Corpus vectors are computed at build time and shipped; only the question is embedded at runtime. We measure index size and decide on int8 vectors if it is large.
+**Embeddings.** `multilingual-e5-small` (384 dimensions) through transformers.js. Corpus vectors are computed at build time and shipped; only the question is embedded at runtime. Measured: float32 vectors add 30.6 MiB to the index, so int8 is not needed yet. Results and the truncation finding (46 percent of citable passages exceed the model's 512 tokens) are in [eval/hybrid.md](eval/hybrid.md).
 
 **Evidence quality signal.** The top fused score and the agreement between keyword and vector results decide whether the evidence is strong, weak or absent. That signal feeds section 6.
 

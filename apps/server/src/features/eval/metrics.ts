@@ -61,3 +61,27 @@ export function percentile(values: readonly number[], share: number): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))] ?? 0;
 }
+
+export const METRICS = ["recall@5", "recall@10", "hit@5", "hit@10", "mrr"] as const;
+export type Metric = (typeof METRICS)[number];
+
+export function scoreCase(ranks: ExpectedRanks): Record<Metric, number> {
+  return {
+    "recall@5": recallAt(ranks, 5),
+    "recall@10": recallAt(ranks, 10),
+    "hit@5": hitAt(ranks, 5) ? 1 : 0,
+    "hit@10": hitAt(ranks, 10) ? 1 : 0,
+    mrr: reciprocalRank(ranks),
+  };
+}
+
+export type PairedDifference = { mean: number; halfWidth: number; clears: boolean };
+
+/** `after` minus `before` over the same cases. `halfWidth` is the 95 percent half-width of the mean difference. */
+export function pairedDifference(before: readonly number[], after: readonly number[]): PairedDifference {
+  const differences = after.map((value, index) => value - (before[index] as number));
+  const mean = differences.reduce((total, value) => total + value, 0) / differences.length;
+  const variance = differences.reduce((total, value) => total + (value - mean) ** 2, 0) / (differences.length - 1);
+  const halfWidth = 1.96 * Math.sqrt(variance / differences.length);
+  return { mean, halfWidth, clears: Math.abs(mean) > halfWidth };
+}
