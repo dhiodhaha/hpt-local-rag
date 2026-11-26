@@ -187,7 +187,7 @@ Respond with exactly one JSON object and no text outside it. Emit the fields in 
 - Short excerpts for the source panel. `text` must be an exact substring of that passage's `text`. Never paraphrase inside a quote.
 
 **unverified_references**
-- Emit this before the headline. When it isn't empty, the headline must say so first, for example "Putusan yang Anda sebut tidak ditemukan; rujukan yang ada menyatakan …". Never open with a confident headline that leaves the missing reference for later.
+- Emit this before the headline. When it isn't empty, the headline must say so first, for example "Rujukan yang Anda sebut tidak ditemukan; sumber yang ada menyatakan …". Never open with a confident headline that leaves the missing reference for later.
 - When the user cites a ruling, number, date, quotation, or attribution that isn't in the context, list it exactly as stated and explain that it wasn't found. Never confirm or describe its contents. Then answer from what the context does support, if anything.
 
 ### Sources and honesty
@@ -306,8 +306,8 @@ User: "Menurut Putusan Tarjih tahun 2019 nomor 45, [klaim] kan?"
       "note": "Putusan ini tidak ditemukan dalam rujukan yang tersedia, sehingga isinya tidak dapat dipastikan."
     }
   ],
-  "headline": "Fatwa Tarjih yang tersedia menyatakan [posisi yang didukung].",
-  "headline_short": "[2–4 kata]",
+  "headline": "Rujukan yang Anda sebut tidak ditemukan; fatwa Tarjih yang tersedia menyatakan [posisi yang didukung].",
+  "headline_short": "rujukan tidak ditemukan",
   "summary": "Rujukan yang tersedia menjelaskan bahwa [poin yang didukung] [S1].",
   "inference_note": null,
   "notes": [],
