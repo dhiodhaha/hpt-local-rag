@@ -15,3 +15,17 @@ export const config = {
   embeddingCacheFile: process.env.HPT_EMBEDDING_CACHE ?? path.join(dataDir, "cache", "embeddings.sqlite"),
   siteUrl: "https://hpt.muhammadiyah.or.id",
 };
+
+export const answerConfig = {
+  systemPromptDoc: path.join(repoRoot, "docs", "system-prompt-v2.md"),
+  conversationsDir: path.join(dataDir, "conversations"),
+  tracesDir: path.join(dataDir, "traces"),
+  canaryFile: path.join(dataDir, "canary.txt"),
+  answer: {
+    model: "claude-sonnet-5-5",
+    effort: "medium",
+    maxExtraToolCalls: 2,
+    searchLimit: 10,
+    evidenceTokens: 8000,
+  },
+} as const;
