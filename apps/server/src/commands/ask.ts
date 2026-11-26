@@ -114,7 +114,7 @@ export function createPrinter(output: (text: string) => void, options: PrinterOp
           const { value } = event;
           write(`  dalil    ${value.kind} ${value.reference}  arab: ${value.arabic === null ? "tidak ada" : "dari sumber"}${marks(value.sources)}${edits}\n`);
         } else if (event.name === "quotes") write(`  kutipan  [${n(event.value.passage)}] ${quote(event.value)}\n`);
-        else if (event.name === "unverified_references") write(`  tidak ditemukan: ${event.value.asStated}\n`);
+        else if (event.name === "unverified_references") write(`  rujukan belum terverifikasi: ${event.value.asStated} (${event.value.note})\n`);
         else write(`  pilihan  ${event.value}\n`);
         return;
       }

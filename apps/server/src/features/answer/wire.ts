@@ -9,6 +9,7 @@ import { z } from "zod";
 export const FIELD_ORDER = [
   "type",
   "basis",
+  "unverified_references",
   "headline",
   "headline_short",
   "summary",
@@ -16,7 +17,6 @@ export const FIELD_ORDER = [
   "notes",
   "dalil",
   "quotes",
-  "unverified_references",
   "clarifying_question",
   "clarifying_options",
   "message",

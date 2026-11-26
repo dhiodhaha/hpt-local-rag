@@ -1,4 +1,4 @@
-import { checkComplete, checkDalil, checkMarkersSoFar, checkNote, checkQuote, toProse, type Checked } from "./checks.ts";
+import { checkComplete, checkDalil, checkHeadlineLeads, checkMarkersSoFar, checkNote, checkQuote, toProse, type Checked } from "./checks.ts";
 import { emptyAnswer, foldAnswer } from "./fold.ts";
 import type { SourceLedger } from "./ledger.ts";
 import { dispose, type Finding, type Site } from "./policy.ts";
@@ -20,9 +20,10 @@ import { FIELD_ORDER, isField, isItemField, parseItem, parseScalar, PROGRESS_FIE
  *           retry_attempt     seal the pipeline and return `abort` at once (D10d: the retry starts as early as the failure is seen)
  *
  * Release gate. A READY field is held until every field before it in FIELD_ORDER is settled (released, dropped, withheld or
- * known absent), and list items release in index order. So `basis` is always shown before `headline` even when the model
- * writes them the other way round, and an item is never shown before its checks (D10g). A field the model left out is known
- * absent only when the object closes. A misordered or incomplete stream costs latency, never correctness.
+ * known absent), and list items release in index order. So `basis` and `unverified_references` are always shown before
+ * `headline` even when the model writes them the other way round, and an item is never shown before its checks (D10g). A
+ * field the model left out is known absent only when the object closes. A misordered or incomplete stream costs latency,
+ * never correctness.
  *
  * Three sequencing rules the pipeline owns. The canary is checked on the raw stream BEFORE the scanner sees a delta. A tool
  * call before anything was shown means the model thought aloud first, so the attempt's state is cleared. After something was
@@ -279,7 +280,8 @@ export function createPipeline(input: PipelineInput): Pipeline {
         const missing = checkComplete(answer);
         findings.push(...missing.slice(1));
         const first = missing[0];
-        if (first !== undefined) abortWith(first);
+        if (first !== undefined) return abortWith(first);
+        findings.push(...checkHeadlineLeads(answer));
       }),
     get answer() {
       return answer;

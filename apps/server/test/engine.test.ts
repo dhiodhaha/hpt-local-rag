@@ -248,6 +248,19 @@ describe("cancelling and queueing", () => {
   });
 });
 
+describe("a headline that does not lead with an unverified reference (D17)", () => {
+  const missing = [{ as_stated: "Putusan Tarjih tahun 2019 nomor 45", note: "Putusan ini tidak ditemukan." }];
+
+  it("delivers the answer and records the warning in the trace, without a retry", async () => {
+    const { engine } = setup([{ chunks: [answerJson({ unverified_references: missing })] }]);
+    const { finished } = await ask(engine);
+    assert.equal(finished.outcome.kind, "delivered");
+    assert.equal(finished.trace.attempts.length, 1);
+    assert.deepEqual(finished.trace.attempts[0]?.findings.map((found) => [found.code, found.action]), [["headline_not_leading", "warn"]]);
+    assert.deepEqual(finished.trace.attempts[0]?.committedMs.map((mark) => mark.name).slice(0, 4), ["type", "basis", "unverified_references[0]", "headline"]);
+  });
+});
+
 describe("the headline while its summary is checked", () => {
   const states = (events: readonly AnswerEvent[]) => {
     let answer = emptyAnswer();

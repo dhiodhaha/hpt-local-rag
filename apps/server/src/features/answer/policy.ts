@@ -47,6 +47,7 @@ export const FINDING_CODES = [
   "superseded_cited", //     a superseded passage cited anywhere but a `revision` note (D10h)
   "quote_not_verbatim", //   a Latin quote is not an exact substring of its passage after normalisation
   "arabic_not_in_source", // Arabic that does not match a cited passage (harakat are never ignored, D10a)
+  "headline_not_leading", // a reference is listed as unverified, but the headline does not open with that (D17)
 ] as const;
 export type FindingCode = (typeof FINDING_CODES)[number];
 
@@ -90,6 +91,7 @@ const RULES: Readonly<Record<FindingCode, Readonly<Partial<Record<Site, Action>>
     quotes: "drop_item",
   },
   arabic_not_in_source: { dalil: "repair" }, // D10b: null it, keep the card with translation and reference
+  headline_not_leading: { headline: "warn" }, // D17: the trace and the eval count it, the reader still gets the answer
 };
 
 const RANK: Readonly<Record<Action, number>> = { warn: 0, repair: 1, drop_item: 2, withhold_item: 3, retry_attempt: 4 };
