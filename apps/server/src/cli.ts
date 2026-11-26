@@ -1,10 +1,14 @@
+import fs from "node:fs";
+import path from "node:path";
 import { parseArgs } from "node:util";
+import { formatReport, runRetrievalEval } from "./features/eval/index.ts";
 import { buildIndex, openIndex, statusOf, type BuildReport, type SearchResult } from "./features/search/index.ts";
 import { config } from "./shared/config.ts";
 
 const USAGE = `Usage:
   hpt build [--vault <dir>] [--out <file>]
-  hpt search "<question>" [--limit 10] [--note <note id>] [--json]`;
+  hpt search "<question>" [--limit 10] [--note <note id>] [--json]
+  hpt eval retrieval [--out <dir>] [--misses 30]`;
 
 function printBuild(report: BuildReport, outFile: string): void {
   const mb = (report.bytes / 1_048_576).toFixed(1);
@@ -70,6 +74,23 @@ async function main(argv: string[]): Promise<number> {
       });
       if (values.json) console.log(JSON.stringify(result, null, 2));
       else printSearch(result);
+    } finally {
+      index.close();
+    }
+    return 0;
+  }
+  if (command === "eval" && rest[0] === "retrieval") {
+    const { values } = parseArgs({ args: rest.slice(1), options: { out: { type: "string" }, misses: { type: "string" } } });
+    const index = openIndex({ path: config.indexFile });
+    try {
+      const report = await runRetrievalEval({ index, qaFile: config.qaFile });
+      const outDir = values.out ?? config.evalDir;
+      fs.mkdirSync(outDir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const file = path.join(outDir, `retrieval-${report.indexFingerprint.slice(0, 8)}-${stamp}.json`);
+      fs.writeFileSync(file, JSON.stringify(report, null, 2));
+      console.log(formatReport(report, { maxMisses: Number(values.misses ?? 30) }));
+      console.log(`\nRun written to ${file}`);
     } finally {
       index.close();
     }
