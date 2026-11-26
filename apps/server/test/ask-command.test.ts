@@ -6,8 +6,8 @@ import { loadPromptTemplate } from "../src/features/answer/prompt.ts";
 import { memoryTraceSink } from "../src/features/answer/trace.ts";
 import { chunked, scriptedProvider, type ScriptedAttempt } from "../src/features/providers/index.ts";
 import { answerConfig } from "../src/shared/config.ts";
-import { ONE, TWO, answerJson, makePassage } from "./answer-fixtures.ts";
-import { fakeIndex } from "./fake-index.ts";
+import { ONE, TWO, answerJson, makePassage } from "../src/testing/answer-fixtures.ts";
+import { fakeIndex } from "../src/testing/fake-index.ts";
 
 const SETTINGS: EngineSettings = { model: "claude-test", effort: "medium", maxExtraToolCalls: 2, searchLimit: 10, evidenceTokens: 8000 };
 

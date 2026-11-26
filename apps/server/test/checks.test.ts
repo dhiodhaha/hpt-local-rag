@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { checkComplete, checkDalil, checkMarkersSoFar, checkNote, checkQuote, checkSources, findSpan, markersOf, normalize, toProse, verifyExcerpt } from "../src/features/answer/checks.ts";
 import { emptyAnswer } from "../src/features/answer/fold.ts";
 import type { Answer } from "../src/features/answer/types.ts";
-import { ARABIC, NOTES, ONE, TWO, ledgerOf, makePassage } from "./answer-fixtures.ts";
+import { ARABIC, NOTES, ONE, TWO, ledgerOf, makePassage } from "../src/testing/answer-fixtures.ts";
 
 const wireDalil = (overrides: Record<string, unknown> = {}) =>
   ({ id: "D1", kind: "tarjih", reference: "r", arabic: ARABIC, translation: null, explanation: "e", explanation_basis: "explicit", sources: ["S2"], ...overrides }) as never;

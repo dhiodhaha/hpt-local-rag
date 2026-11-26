@@ -3,8 +3,8 @@ import { describe, it } from "node:test";
 import { EXCERPT_WORDS, excerptOf, FULL_PASSAGES, estimateTokens, fillLedger, packContext, queriesFor, retrieve, type Retrieved } from "../src/features/answer/retrieval.ts";
 import { SourceLedger } from "../src/features/answer/ledger.ts";
 import type { HistoryEntry, Turn } from "../src/features/answer/types.ts";
-import { ONE, TWO, makePassage } from "./answer-fixtures.ts";
-import { fakeIndex } from "./fake-index.ts";
+import { ONE, TWO, makePassage } from "../src/testing/answer-fixtures.ts";
+import { fakeIndex } from "../src/testing/fake-index.ts";
 import { sentences } from "./helpers.ts";
 
 const turn = (question: string, history: HistoryEntry[] = [], scope: Turn["scope"] = null): Turn => ({ question, history, scope });

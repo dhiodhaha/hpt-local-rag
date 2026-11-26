@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { checkDalil, checkNote, checkQuote } from "../src/features/answer/checks.ts";
 import { actionOf, dispose, MAX_ATTEMPTS, nextStep, queuesForTestSet, SITES, type Finding, type FindingCode, type Site } from "../src/features/answer/policy.ts";
 import type { Edit } from "../src/features/answer/types.ts";
-import { NOTES, ONE, TWO, ledgerOf } from "./answer-fixtures.ts";
+import { NOTES, ONE, TWO, ledgerOf } from "../src/testing/answer-fixtures.ts";
 
 const finding = (code: FindingCode, site: Site, repair: Edit | null = null): Finding => ({ code, site, detail: "", repair });
 const REPAIR: Edit = { kind: "quote_dropped", id: "N1" };

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { PassageId } from "../search/index.ts";
+import { isConversationId, type ConversationId } from "./conversation-id.ts";
 import type { AnswerEngine, AskOptions, Finished } from "./engine.ts";
 import { citedOf } from "./fold.ts";
 import type { CompleteAnswer, HistoryEntry, Scope, Turn } from "./types.ts";
@@ -17,8 +18,6 @@ import type { CompleteAnswer, HistoryEntry, Scope, Turn } from "./types.ts";
  * option is a follow-up. A withheld, failed or cancelled ask leaves no turn, so the user asks again against an unchanged
  * history.
  */
-export type ConversationId = string;
-
 export type StoredTurn = {
   /** The ask's id. Equals the trace id. */
   readonly id: string;
@@ -70,7 +69,7 @@ function readTurns(file: string): StoredTurn[] {
   return turns;
 }
 
-function newId(): ConversationId {
+export function newId(): ConversationId {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
   return `c-${stamp}-${crypto.randomBytes(2).toString("hex")}`;
 }
@@ -110,6 +109,7 @@ export function openConversations(dir: string): Conversations {
         if (latest === undefined) throw new Error("There is no earlier conversation to continue.");
         return conversation(latest.replace(/\.jsonl$/, ""));
       }
+      if (!isConversationId(which)) throw new Error(`"${which}" is not a conversation id.`);
       return conversation(which);
     },
     list: () => files().map((name) => ({ id: name.replace(/\.jsonl$/, ""), turns: readTurns(path.join(dir, name)).length })),

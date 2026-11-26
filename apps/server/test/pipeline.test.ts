@@ -5,7 +5,7 @@ import { actionOf, queuesForTestSet } from "../src/features/answer/policy.ts";
 import { createTripwire } from "../src/features/answer/tripwire.ts";
 import type { AnswerEvent } from "../src/features/answer/types.ts";
 import { chunked } from "../src/features/providers/index.ts";
-import { ARABIC, GOOD_ANSWER, NOTES, ONE, TWO, answerJson, ledgerOf, makePassage } from "./answer-fixtures.ts";
+import { ARABIC, GOOD_ANSWER, NOTES, ONE, TWO, answerJson, ledgerOf, makePassage } from "../src/testing/answer-fixtures.ts";
 
 const CANARY = "CANARY-7f3a91";
 

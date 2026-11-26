@@ -3,8 +3,8 @@ import { describe, it } from "node:test";
 import { SourceLedger } from "../src/features/answer/ledger.ts";
 import { createToolSession, TOOL_SPECS, type ToolCallLog } from "../src/features/answer/tools.ts";
 import { createTripwire } from "../src/features/answer/tripwire.ts";
-import { ONE, TWO, ledgerOf, makePassage } from "./answer-fixtures.ts";
-import { fakeIndex } from "./fake-index.ts";
+import { ONE, TWO, ledgerOf, makePassage } from "../src/testing/answer-fixtures.ts";
+import { fakeIndex } from "../src/testing/fake-index.ts";
 
 const THREE = makePassage(3, "Teks ketiga yang baru.");
 const FOUR = makePassage(4, "Teks keempat yang baru.");

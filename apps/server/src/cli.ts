@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { ASK_USAGE, askCommand } from "./commands/ask.ts";
+import { HOST_USAGE, hostCommand } from "./commands/host.ts";
 import { EVAL_ANSWERS_USAGE, evalAnswersCommand } from "./commands/eval-answers.ts";
 import { EVAL_REDTEAM_USAGE, evalRedteamCommand } from "./commands/eval-redteam.ts";
 import { calibrate, formatCalibration, formatComparison, formatReport, labelled, runRetrievalEval, type RetrievalReport } from "./features/eval/index.ts";
@@ -12,6 +13,7 @@ const USAGE = `Usage:
   hpt build [--vault <dir>] [--out <file>] [--keyword-only]
   hpt search "<question>" [--limit 10] [--note <note id>] [--channels keyword,vector] [--json]
   hpt ask "<question>" [-c] [--note <note id>] [--model sonnet|opus|haiku] [--effort low|medium|high] [--json]
+  hpt host [--scenario <name>]   (started by the desktop app)
   hpt eval retrieval [--out <dir>] [--misses 30]
   hpt eval compare <before run.json> <after run.json>
   hpt eval evidence <run.json>
@@ -124,6 +126,14 @@ async function main(argv: string[]): Promise<number> {
     } catch (cause) {
       return fail(`${cause instanceof Error ? cause.message : String(cause)}
 ${ASK_USAGE}`);
+    }
+  }
+  if (command === "host") {
+    try {
+      return await hostCommand(rest);
+    } catch (cause) {
+      return fail(`${cause instanceof Error ? cause.message : String(cause)}
+${HOST_USAGE}`);
     }
   }
   if (command === "eval" && rest[0]?.startsWith("answers")) {

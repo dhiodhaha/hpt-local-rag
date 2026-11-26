@@ -8,7 +8,7 @@ import { SourceLedger } from "../src/features/answer/ledger.ts";
 import { FIELD_ORDER } from "../src/features/answer/wire.ts";
 import type { HistoryEntry, Turn } from "../src/features/answer/types.ts";
 import { answerConfig } from "../src/shared/config.ts";
-import { ONE, TWO, ledgerOf, makePassage } from "./answer-fixtures.ts";
+import { ONE, TWO, ledgerOf, makePassage } from "../src/testing/answer-fixtures.ts";
 import { sentences, tempDir } from "./helpers.ts";
 
 const turn = (question: string, history: HistoryEntry[] = [], scope: Turn["scope"] = null): Turn => ({ question, history, scope });
