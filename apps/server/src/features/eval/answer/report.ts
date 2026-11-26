@@ -68,7 +68,7 @@ export type ConfigReport = {
   };
   readonly tools: { readonly answersWithCalls: number; readonly calls: number; readonly denied: number; readonly searches: number };
   readonly overlap: { readonly questions: number; readonly expected: number; readonly inContext: number; readonly cited: number };
-  /** Cost: attempts are model calls, and each granted extra call is one more model round trip. */
+  /** Cost: attempts are model calls, and each extra call, granted or denied, sends its reply back to the model for one more round trip. */
   readonly usage: { readonly attempts: number; readonly toolRoundTrips: number; readonly inputTokens: number; readonly outputTokens: number; readonly cacheReadTokens: number; readonly cacheWriteTokens: number };
   readonly ids: {
     readonly typeMismatch: readonly string[];
@@ -213,7 +213,7 @@ export function summarizeRun(input: SummarizeInput): ConfigReport {
     },
     usage: {
       attempts: sum(traces.map((trace) => trace.attempts.length)),
-      toolRoundTrips: sum(scores.map((one) => one.tools.granted)),
+      toolRoundTrips: sum(scores.map((one) => one.tools.granted + one.tools.denied)),
       inputTokens: sum(traces.flatMap((trace) => trace.attempts.map((attempt) => attempt.usage?.inputTokens ?? 0))),
       outputTokens: sum(traces.flatMap((trace) => trace.attempts.map((attempt) => attempt.usage?.outputTokens ?? 0))),
       cacheReadTokens: sum(traces.flatMap((trace) => trace.attempts.map((attempt) => attempt.usage?.cacheReadTokens ?? 0))),
@@ -282,6 +282,7 @@ export function formatAnswerComparison(reports: readonly ConfigReport[]): string
       distCell(answers.headline),
       distCell(answers.headline, "p90"),
       distCell(report.latency.noTool.headline),
+      distCell(report.latency.withTool.headline),
       distCell(answers.firstText),
       distCell(answers.settled),
       distCell(answers.done),
@@ -294,7 +295,7 @@ export function formatAnswerComparison(reports: readonly ConfigReport[]): string
     ];
   });
   return table(
-    ["configuration", "asked", "headline p50", "headline p90", "headline p50, no tool", "first text p50", "settled p50", "done p50", "type ok", "shape ok", "basis ok", "withheld / failed", "restarts", "extra calls (answers)"],
+    ["configuration", "asked", "headline p50", "headline p90", "headline p50, no tool", "headline p50, with tool", "first text p50", "settled p50", "done p50", "type ok", "shape ok", "basis ok", "withheld / failed", "restarts", "extra calls (answers)"],
     rows,
   );
 }
@@ -319,12 +320,37 @@ export function formatLimiter(reports: readonly ConfigReport[]): string {
   );
 }
 
+/** One cell per category and configuration: type matches out of asked, then the headline p50 and the extra calls. */
+export function formatCategoryMatrix(reports: readonly ConfigReport[]): string {
+  return table(
+    ["category", ...reports.map(label)],
+    CATEGORIES.map((category) => [
+      category,
+      ...reports.map((report) => {
+        const one = report.byCategory[category];
+        return `${one.typeOk}/${one.n} ok, ${seconds(one.headline.p50)} s, ${one.toolCalls} calls`;
+      }),
+    ]),
+  );
+}
+
 export function formatChecks(reports: readonly ConfigReport[]): string {
   const codes = FINDING_CODES.filter((code) => reports.some((report) => report.checks.answersWith[code] > 0));
   const repairs = [...new Set(reports.flatMap((report) => Object.keys(report.checks.repairs)))].sort();
   return table(
     ["configuration", "answers retried", ...codes, ...repairs.map((kind) => `repair ${kind}`)],
     reports.map((report) => [label(report), `${report.checks.answersRetried}`, ...codes.map((code) => `${report.checks.answersWith[code]}`), ...repairs.map((kind) => `${report.checks.repairs[kind] ?? 0}`)]),
+  );
+}
+
+/** Of the notes HPT cited for the questions that have references, how many were in our context and how many our answer cited. Silver labels. */
+export function formatOverlap(reports: readonly ConfigReport[]): string {
+  return table(
+    ["configuration", "questions", "HPT notes", "in our context", "cited by our answer"],
+    reports.map((report) => {
+      const { overlap } = report;
+      return [label(report), `${overlap.questions}`, `${overlap.expected}`, `${overlap.inContext}`, `${overlap.cited}`];
+    }),
   );
 }
 

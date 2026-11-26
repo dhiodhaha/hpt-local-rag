@@ -7,6 +7,7 @@ import { createEngine, loadPromptTemplate, memoryTraceSink } from "../src/featur
 import {
   formatAnswerComparison,
   formatCategories,
+  formatCategoryMatrix,
   formatChecks,
   formatCost,
   formatGate,
@@ -140,7 +141,7 @@ describe("the report", () => {
 
   it("prints numbers and ids only, never a question or an answer", async () => {
     const result = await report([{ chunks: [answerJson()] }, { chunks: [answerJson({ basis: "inferred", inference_note: "Disimpulkan." })] }, { chunks: [answerJson(NONE)] }]);
-    const text = [formatAnswerComparison([result]), formatLimiter([result]), formatChecks([result]), formatCost([result]), formatCategories(result), formatGate(result, result), JSON.stringify(result)].join("\n");
+    const text = [formatAnswerComparison([result]), formatLimiter([result]), formatChecks([result]), formatCost([result]), formatCategories(result), formatCategoryMatrix([result]), formatGate(result, result), JSON.stringify(result)].join("\n");
     assert.match(text, /test medium x2/);
     for (const secret of ["Pertanyaan rahasia", String(GOOD_ANSWER.headline), "Kompos belum matang", "Belum ada"]) assert.equal(text.includes(secret), false, secret);
   });
