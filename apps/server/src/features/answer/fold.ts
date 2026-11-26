@@ -9,7 +9,7 @@ import type { Answer, AnswerEvent, FieldValues, ItemValues, Prose } from "./type
  *   item       appends to its list
  *   progress   replaces `summary` with the pending prose; the `summary` field event later replaces it with the final one
  *   restart    back to an empty answer: the quiet retry replaces what was shown
- *   sources, attempt, tool_call, finished: no effect on the Answer
+ *   sources, attempt, fallback, tool_call, finished: no effect on the Answer
  */
 export function emptyAnswer(): Answer {
   return {

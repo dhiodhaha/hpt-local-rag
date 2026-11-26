@@ -1,4 +1,5 @@
 import type { FailureCode } from "../providers/index.ts";
+import type { Route } from "./routes.ts";
 
 /**
  * Every user-facing string the engine produces, in one file. Indonesian, "Anda". WITHHELD and EXCEPTION_WITHHELD are verbatim
@@ -9,6 +10,13 @@ export const WITHHELD = "Jawaban ini belum lolos pemeriksaan sumber, jadi tidak 
 export const EXCEPTION_WITHHELD = "Ada satu pengecualian yang belum lolos pemeriksaan sumber. Lihat naskah terkait sebelum mengamalkan.";
 
 export const RESTART = "Memeriksa ulang sumber…";
+
+export function modelName(id: string): string {
+  const family = /opus|sonnet|haiku/i.exec(id)?.[0];
+  return family === undefined ? id : `${family.charAt(0).toUpperCase()}${family.slice(1).toLowerCase()}`;
+}
+
+export const fallbackNotice = (route: Route, from: string): string => `Dijawab oleh ${modelName(route.model)} karena batas ${modelName(from)} tercapai.`;
 
 export const FAILURE_COPY: Readonly<Record<FailureCode, string>> = {
   not_signed_in: "Claude Code belum tersambung. Masuk dulu dengan perintah `claude auth login`, lalu coba lagi.",

@@ -16,7 +16,7 @@ describe("the trace recorder", () => {
   it("times fields, items and the first text from the start of the ask, and numbers items per list", () => {
     let clock = 1000;
     const recorder = createRecorder({ ...header, now: () => clock });
-    recorder.attemptStarted(1);
+    recorder.attemptStarted(1, { model: "m", effort: "medium" }, null);
     clock += 120;
     recorder.providerStarted(3.4, true);
     clock += 1800;
@@ -32,6 +32,7 @@ describe("the trace recorder", () => {
     recorder.attemptEnded({ end: "complete", findings: [], edits: [], failure: null, visibleRestart: false, usage: null });
     const trace = recorder.finish({ outcome: { kind: "delivered" }, ledger: [ONE.id], tools: [], cited: [ONE.id] });
     const [attempt] = trace.attempts;
+    assert.deepEqual([attempt?.route, attempt?.fallback], [{ model: "m", effort: "medium" }, null]);
     assert.equal(attempt?.firstTextMs, 1920);
     assert.equal(attempt?.providerWaitMs, 3);
     assert.equal(attempt?.warm, true);

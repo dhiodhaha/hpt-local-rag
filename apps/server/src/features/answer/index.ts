@@ -22,7 +22,10 @@ export type { AttemptTrace, FindingTrace, Trace, TraceSink } from "./trace.ts";
 export { FINDING_CODES } from "./policy.ts";
 export type { FindingCode } from "./policy.ts";
 
-export { EXCEPTION_WITHHELD, FAILURE_COPY } from "./copy.ts";
+export { EXCEPTION_WITHHELD, FAILURE_COPY, fallbackNotice, modelName } from "./copy.ts";
+
+export { NO_LIMITS, UNKNOWN_RESET_MS, pickRoute, planOf, withLimit } from "./routes.ts";
+export type { Fallbacks, Limits, Route } from "./routes.ts";
 
 export type {
   Answer,

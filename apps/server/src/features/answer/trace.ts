@@ -5,6 +5,7 @@ import type { Effort, FailureCode, Usage } from "../providers/index.ts";
 import type { AnswerEvent, Edit, Outcome } from "./types.ts";
 import type { FindingCode, Site } from "./policy.ts";
 import type { ToolCallLog } from "./tools.ts";
+import type { Route } from "./routes.ts";
 
 /**
  * One JSONL line per answer under data/traces/, including answers that were withheld, failed or cancelled. Timings are
@@ -25,6 +26,10 @@ export type FindingTrace = {
 
 export type AttemptTrace = {
   readonly n: number;
+  /** The model and effort this attempt ran on. The trace's own `model` and `effort` are what the ask asked for. */
+  readonly route: Route;
+  /** Set when the attempt ran on a fallback route: the model whose usage limit was spent, and when it is tried again. */
+  readonly fallback: { readonly from: string; readonly until: string } | null;
   /** From run() to the request being sent: the wait for the provider. */
   readonly providerWaitMs: number;
   readonly warm: boolean;
@@ -97,7 +102,7 @@ export function memoryTraceSink(): TraceSink & { readonly traces: readonly Trace
 
 export type Recorder = {
   retrieval(retrieval: Trace["retrieval"]): void;
-  attemptStarted(n: number): void;
+  attemptStarted(n: number, route: Route, fallback: AttemptTrace["fallback"]): void;
   providerStarted(waitMs: number, warm: boolean): void;
   firstText(): void;
   event(event: AnswerEvent): void;
@@ -116,7 +121,7 @@ export type RecorderInit = Omit<Trace, "retrieval" | "ledger" | "tools" | "attem
   readonly now: () => number;
 };
 
-type Draft = { n: number; providerWaitMs: number; warm: boolean; firstTextMs: number | null; committed: { name: string; ms: number }[]; items: Map<string, number> };
+type Draft = { n: number; route: Route; fallback: AttemptTrace["fallback"]; providerWaitMs: number; warm: boolean; firstTextMs: number | null; committed: { name: string; ms: number }[]; items: Map<string, number> };
 
 const NO_RETRIEVAL: Trace["retrieval"] = { ms: 0, queries: 0, hits: 0, evidence: "absent", packed: 0, dropped: 0, estimatedTokens: 0 };
 
@@ -132,8 +137,8 @@ export function createRecorder(init: RecorderInit): Recorder {
     retrieval(value) {
       retrieval = value;
     },
-    attemptStarted(n) {
-      draft = { n, providerWaitMs: 0, warm: false, firstTextMs: null, committed: [], items: new Map() };
+    attemptStarted(n, route, fallback) {
+      draft = { n, route, fallback, providerWaitMs: 0, warm: false, firstTextMs: null, committed: [], items: new Map() };
     },
     providerStarted(waitMs, warm) {
       if (draft === null) return;
@@ -157,6 +162,8 @@ export function createRecorder(init: RecorderInit): Recorder {
       if (draft === null) return;
       attempts.push({
         n: draft.n,
+        route: draft.route,
+        fallback: draft.fallback,
         providerWaitMs: draft.providerWaitMs,
         warm: draft.warm,
         firstTextMs: draft.firstTextMs,

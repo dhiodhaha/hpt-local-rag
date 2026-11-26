@@ -2,6 +2,7 @@ import type { NoteId } from "../corpus/index.ts";
 import type { Evidence, Passage, PassageId } from "../search/index.ts";
 import type { FailureCode } from "../providers/index.ts";
 import type { FindingCode } from "./policy.ts";
+import type { Route } from "./routes.ts";
 
 /**
  * Domain types of the answer engine. The model's JSON (wire shape) and its S-ids never appear here: they are parsed at the
@@ -151,6 +152,8 @@ export type AnswerEvent =
   | { readonly kind: "sources"; readonly added: readonly SourceCard[]; readonly evidence: Evidence | null }
   | { readonly kind: "attempt"; readonly attempt: number; readonly because: Cause | null }
   | { readonly kind: "restart"; readonly copy: string }
+  /** The attempt just announced runs on a fallback route because `from` is at its usage limit until `until`. */
+  | { readonly kind: "fallback"; readonly route: Route; readonly from: string; readonly until: string }
   /** The summary passed its checks, so the headline shown earlier is now confirmed. */
   | { readonly kind: "settled"; readonly name: "headline" }
   | { readonly kind: "tool_call"; readonly n: number; readonly tool: string; readonly arg: string; readonly denied: boolean }

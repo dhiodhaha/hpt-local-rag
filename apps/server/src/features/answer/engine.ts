@@ -8,8 +8,9 @@ import { createPipeline, type Pipeline, type PipelineStep } from "./pipeline.ts"
 import { actionOf, MAX_ATTEMPTS, nextStep, queuesForTestSet, type AttemptEnd, type FindingCode, type NextStep } from "./policy.ts";
 import { systemPrompt, userMessage, type PromptTemplate } from "./prompt.ts";
 import { fillLedger, packContext, retrieve } from "./retrieval.ts";
+import { NO_LIMITS, pickRoute, planOf, withLimit, type Fallbacks, type Limits, type Route } from "./routes.ts";
 import { createToolSession, TOOL_SPECS } from "./tools.ts";
-import { createRecorder, type FindingTrace, type Trace, type TraceSink } from "./trace.ts";
+import { createRecorder, type AttemptTrace, type FindingTrace, type Trace, type TraceSink } from "./trace.ts";
 import { createTripwire } from "./tripwire.ts";
 import type { AnswerEvent, Cause, CompleteAnswer, Outcome, SourceCard, Turn } from "./types.ts";
 
@@ -19,6 +20,8 @@ export type EngineSettings = {
   readonly maxExtraToolCalls: number;
   readonly searchLimit: number;
   readonly evidenceTokens: number;
+  /** D20: the route that takes over when a model's usage limit is spent. Absent or empty means a spent limit fails the answer. */
+  readonly fallbacks?: Fallbacks;
 };
 
 export type EngineDeps = {
@@ -29,6 +32,8 @@ export type EngineDeps = {
   readonly traces: TraceSink;
   readonly settings: EngineSettings;
   readonly now?: () => number;
+  /** Epoch milliseconds, to compare with a provider's limit reset time. `now` is a monotonic clock and cannot. */
+  readonly wall?: () => number;
 };
 
 export type AskOptions = {
@@ -65,21 +70,26 @@ type AttemptResult = { end: AttemptEnd; pipeline: Pipeline; usage: Usage | null;
 
 export function createEngine(deps: EngineDeps): AnswerEngine {
   const now = deps.now ?? (() => performance.now());
+  const wall = deps.wall ?? Date.now;
   let queue: Promise<unknown> = Promise.resolve();
+  let limits: Limits = NO_LIMITS;
 
-  const profileFor = (settings: EngineSettings): RunProfile => ({
-    model: settings.model,
-    effort: settings.effort,
+  const profileFor = (settings: EngineSettings, route: Route): RunProfile => ({
+    model: route.model,
+    effort: route.effort,
     system: systemPrompt(deps.prompt, { canary: deps.canary, maxExtraCalls: settings.maxExtraToolCalls }),
     tools: settings.maxExtraToolCalls > 0 ? TOOL_SPECS : [],
   });
+
+  const planFor = (settings: EngineSettings) => planOf({ model: settings.model, effort: settings.effort }, settings.fallbacks ?? {});
+  const routeFrom = (plan: ReturnType<typeof planFor>): Route => pickRoute(plan, limits, wall()) ?? plan[0];
 
   async function runAsk(turn: Turn, options: AskOptions): Promise<Finished> {
     const id = randomUUID();
     const given = Object.entries(options.overrides ?? {}).filter(([, value]) => value !== undefined);
     const settings: EngineSettings = { ...deps.settings, ...Object.fromEntries(given) };
-    const profile = profileFor(settings);
-    deps.provider.warm(profile);
+    const plan = planFor(settings);
+    deps.provider.warm(profileFor(settings, routeFrom(plan)));
     const recorder = createRecorder({
       v: 1,
       id,
@@ -128,8 +138,9 @@ export function createEngine(deps: EngineDeps): AnswerEngine {
       },
     });
 
-    async function runAttempt(attempt: number, retryReason: FindingCode | null): Promise<AttemptResult> {
-      recorder.attemptStarted(attempt);
+    async function runAttempt(attempt: number, retryReason: FindingCode | null, route: Route, fallback: AttemptTrace["fallback"]): Promise<AttemptResult> {
+      const profile = profileFor(settings, route);
+      recorder.attemptStarted(attempt, route, fallback);
       const tripwire = createTripwire(deps.canary);
       const pipeline = createPipeline({ ledger, tripwire });
       const result: AttemptResult = { end: { kind: "cancelled" }, pipeline, usage: null, failure: null };
@@ -179,9 +190,14 @@ export function createEngine(deps: EngineDeps): AnswerEngine {
     let because: Cause | null = null;
     let retryReason: FindingCode | null = null;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      const route = routeFrom(plan);
+      const until = limits.get(plan[0].model);
+      const fallback = route === plan[0] || until === undefined ? null : { from: plan[0].model, until: new Date(until).toISOString() };
       emit({ kind: "attempt", attempt, because });
-      last = await runAttempt(attempt, retryReason);
-      step = nextStep(last.end, attempt);
+      if (fallback !== null) emit({ kind: "fallback", route, ...fallback });
+      last = await runAttempt(attempt, retryReason, route, fallback);
+      if (last.end.kind === "provider_failed" && last.end.code === "rate_limited") limits = withLimit(limits, route.model, last.failure?.resetsAt ?? null, wall());
+      step = nextStep(last.end, attempt, pickRoute(plan, limits, wall()) !== null);
       const visibleRestart = step.kind === "retry" && last.pipeline.committed;
       recorder.attemptEnded({
         end: last.end.kind,
@@ -211,7 +227,7 @@ export function createEngine(deps: EngineDeps): AnswerEngine {
       queue = run.catch(() => {});
       return run;
     },
-    warm: () => deps.provider.warm(profileFor(deps.settings)),
+    warm: () => deps.provider.warm(profileFor(deps.settings, routeFrom(planFor(deps.settings)))),
     async close() {
       await queue.catch(() => {});
       await deps.provider.close();

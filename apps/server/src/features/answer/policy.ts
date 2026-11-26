@@ -145,19 +145,20 @@ export type NextStep =
   | { readonly kind: "fail"; readonly code: FailureCode }
   | { readonly kind: "cancel" };
 
-/** D10d: one quiet retry. Check failures and provider failures share the same budget of attempts. */
+/** D10d: one quiet retry. Check failures, provider failures and a switch to the fallback route (D20) share the same budget of attempts. */
 export const MAX_ATTEMPTS = 2;
 
 /** A retry can plausibly help. Not signed in, a spent limit and a missing model will fail the same way again. A safeguard block was stochastic in the spike (1 in 49). */
 const RETRYABLE: ReadonlySet<FailureCode> = new Set<FailureCode>(["overloaded", "blocked", "boot_timeout", "crashed", "unknown"]);
 
-export function nextStep(end: AttemptEnd, attempt: number): NextStep {
+/** `canFallBack`: a route that is not at its usage limit is left. A spent limit is the one provider failure that a different model can fix. */
+export function nextStep(end: AttemptEnd, attempt: number, canFallBack = false): NextStep {
   if (end.kind === "complete") return { kind: "deliver" };
   if (end.kind === "cancelled") return { kind: "cancel" };
   const canRetry = attempt < MAX_ATTEMPTS;
   if (end.kind === "check_failed") {
     return canRetry ? { kind: "retry", because: { kind: "check", code: end.finding.code } } : { kind: "withhold", finding: end.finding };
   }
-  if (canRetry && RETRYABLE.has(end.code)) return { kind: "retry", because: { kind: "provider", code: end.code } };
+  if (canRetry && (RETRYABLE.has(end.code) || (end.code === "rate_limited" && canFallBack))) return { kind: "retry", because: { kind: "provider", code: end.code } };
   return { kind: "fail", code: end.code };
 }
