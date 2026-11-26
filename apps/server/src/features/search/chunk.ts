@@ -1,8 +1,9 @@
 import { renderWikilinks, type NoteId } from "../corpus/index.ts";
+import { findDecisionSpans, type DecisionScan, type LineKind, type SpanLine, type SpanRange } from "./decision-spans.ts";
 import { fold, tokens } from "./fold.ts";
 
 /** Bump on any change that can move passage boundaries. Ordinals, and so passage ids, shift with it. */
-export const CHUNKER_VERSION = 2;
+export const CHUNKER_VERSION = 3;
 
 /** Words alone do not bound the embedder's input: Arabic costs several tokens a word. `TokenBudget` is the binding cap there. */
 export const CHUNK_WORDS = { min: 120, max: 300 } as const;
@@ -27,15 +28,32 @@ export type Chunk = {
   text: string;
   wordCount: number;
   links: NoteId[];
+  /** Index into `ChunkedBody.decisions.spans` when the chunk is decision text, else null. A chunk never mixes the two. */
+  span: number | null;
+};
+
+/** A decision span as the passages cut it: the line range from the detector, plus what the spot-check log shows. */
+export type DecisionSpan = SpanRange & {
+  words: number;
+  opening: string;
+  closing: string;
+  /** Ordinals of the chunks cut from the span. */
+  chunkOrdinals: number[];
 };
 
 export type ChunkedBody = {
   chunks: Chunk[];
   /** Table-of-contents titles that no body heading matched. Their sections are merged into the one before. */
   unmatchedTocTitles: string[];
+  decisions: Omit<DecisionScan, "spans"> & { spans: DecisionSpan[] };
 };
 
-type Line = { text: string; links: NoteId[] };
+export type ChunkOptions = {
+  /** Compiled books only: find the decision spans (`decision-spans.ts`). Other notes have none. */
+  decisionSpans?: boolean;
+};
+
+type Line = { text: string; links: NoteId[]; /** From 1, in the note body. */ no: number };
 
 type Paragraph = {
   text: string;
@@ -44,6 +62,7 @@ type Paragraph = {
   isHeading: boolean;
   sub: string | null;
   page: number | null;
+  span: number | null;
 };
 
 type Section = { top: string | null; paragraphs: Paragraph[] };
@@ -78,9 +97,9 @@ function cleanMarkdown(raw: string): string {
 }
 
 function toLines(body: string): Line[] {
-  return body.split("\n").map((raw) => {
+  return body.split("\n").map((raw, index) => {
     const { text, targets } = renderWikilinks(cleanMarkdown(raw));
-    return { text, links: targets };
+    return { text, links: targets, no: index + 1 };
   });
 }
 
@@ -136,7 +155,7 @@ function extractToc(lines: Line[]): { titles: ReadonlySet<string>; rest: Line[] 
   return { titles, rest: lines.filter((_line, index) => !dropped.has(index)) };
 }
 
-function paragraphOf(lines: readonly Line[], context: Pick<Paragraph, "sub" | "page">): Paragraph {
+function paragraphOf(lines: readonly Line[], context: Pick<Paragraph, "sub" | "page" | "span">): Paragraph {
   const text = lines.map((line) => line.text).join(" ");
   return { text, links: lines.flatMap((line) => line.links), words: countWords(text), isHeading: false, ...context };
 }
@@ -148,65 +167,105 @@ function matchTocTitle(titles: ReadonlySet<string>, line: Line, next: Line | und
   return titles.has(normalizeTitle(wrapped)) ? { text: wrapped, lines: 2 } : null;
 }
 
-function toSections(lines: Line[]): { sections: Section[]; unmatchedTocTitles: string[] } {
-  const { titles, rest } = extractToc(lines);
+type Item = { line: Line; kind: LineKind | "blank"; /** The table-of-contents title, the heading without its markdown marker, or the line. */ text: string; markdown: boolean };
+
+function classify(rest: readonly Line[], titles: ReadonlySet<string>): { items: Item[]; matchedTitles: Set<string> } {
+  const items: Item[] = [];
   const matchedTitles = new Set<string>();
+  for (let index = 0; index < rest.length; index += 1) {
+    const line = rest[index] as Line;
+    if (line.text === "") {
+      items.push({ line, kind: "blank", text: "", markdown: false });
+      continue;
+    }
+    const toc = matchTocTitle(titles, line, rest[index + 1]);
+    if (toc) {
+      matchedTitles.add(normalizeTitle(toc.text));
+      items.push({ line, kind: "section", text: toc.text, markdown: false });
+      index += toc.lines - 1;
+      continue;
+    }
+    const markdownHeading = MARKDOWN_HEADING.exec(line.text);
+    if (markdownHeading || isPseudoHeading(line.text)) items.push({ line, kind: "heading", text: markdownHeading ? (markdownHeading[1] as string) : line.text, markdown: markdownHeading !== null });
+    else items.push({ line, kind: "text", text: line.text, markdown: false });
+  }
+  return { items, matchedTitles };
+}
+
+function spanLine(line: Line, kind: LineKind, text: string): SpanLine {
+  const shown = kind === "text" ? text : cleanHeading(text);
+  return { kind, text: shown, no: line.no, words: countWords(shown) };
+}
+
+function toSections(lines: Line[], decisionSpans: boolean): { sections: Section[]; unmatchedTocTitles: string[]; scan: DecisionScan } {
+  const { titles, rest } = extractToc(lines);
+  const { items, matchedTitles } = classify(rest, titles);
+  const scan = decisionSpans
+    ? findDecisionSpans(items.flatMap(({ line, kind, text }) => (kind === "blank" ? [] : [spanLine(line, kind, text)])))
+    : { spans: [], withoutSpan: [], unscopedMarkers: [] };
+  const spanOfLine = new Map<number, number>();
+  scan.spans.forEach((span, index) => {
+    for (let no = span.startLine; no <= span.endLine; no += 1) spanOfLine.set(no, index);
+  });
+
   const sections: Section[] = [{ top: null, paragraphs: [] }];
   let buffer: Line[] = [];
   let sub: string | null = null;
   let page: number | null = null;
   let currentTop: string | null = null;
+  let currentSpan: number | null = null;
   let wrapsHeading = false;
 
   const current = () => sections[sections.length - 1] as Section;
   const flush = () => {
-    if (buffer.length > 0) current().paragraphs.push(paragraphOf(buffer, { sub, page }));
+    if (buffer.length > 0) current().paragraphs.push(paragraphOf(buffer, { sub, page, span: currentSpan }));
     buffer = [];
   };
   const pushHeading = (text: string, links: NoteId[]) => {
     const heading = cleanHeading(text);
-    current().paragraphs.push({ text: heading, links, words: countWords(heading), isHeading: true, sub, page });
+    current().paragraphs.push({ text: heading, links, words: countWords(heading), isHeading: true, sub, page, span: currentSpan });
   };
   const headingPage = (text: string) => {
     const match = PAGE_PARENTHESIS.exec(text);
     return match ? Number(match[1]) : null;
   };
 
-  for (let index = 0; index < rest.length; index += 1) {
-    const line = rest[index] as Line;
-    if (line.text === "") {
+  for (const item of items) {
+    const { line } = item;
+    if (item.kind === "blank") {
       flush();
       continue;
     }
-    const toc = matchTocTitle(titles, line, rest[index + 1]);
-    if (toc) {
+    const span = spanOfLine.get(line.no) ?? null;
+    if (span !== currentSpan) {
       flush();
       wrapsHeading = false;
-      matchedTitles.add(normalizeTitle(toc.text));
-      const title = cleanHeading(toc.text);
+      currentSpan = span;
+    }
+    if (item.kind === "section") {
+      flush();
+      wrapsHeading = false;
+      const title = cleanHeading(item.text);
       if (normalizeTitle(title) !== normalizeTitle(currentTop ?? "")) {
         currentTop = title;
         sub = null;
-        page = headingPage(toc.text);
+        page = headingPage(item.text);
         sections.push({ top: title, paragraphs: [] });
         pushHeading(title, line.links);
       }
-      index += toc.lines - 1;
       continue;
     }
-    const markdownHeading = MARKDOWN_HEADING.exec(line.text);
-    if (markdownHeading || isPseudoHeading(line.text)) {
+    if (item.kind === "heading") {
       flush();
-      const text = markdownHeading ? (markdownHeading[1] as string) : line.text;
-      if (!markdownHeading && wrapsHeading) {
+      if (!item.markdown && wrapsHeading) {
         const heading = current().paragraphs.pop() as Paragraph;
-        sub = cleanHeading(`${heading.text} ${text}`);
+        sub = cleanHeading(`${heading.text} ${item.text}`);
         pushHeading(sub, [...heading.links, ...line.links]);
-      } else if (normalizeTitle(text) !== normalizeTitle(sub ?? "")) {
-        sub = cleanHeading(text);
-        page = headingPage(text);
-        pushHeading(text, line.links);
-        wrapsHeading = !markdownHeading;
+      } else if (normalizeTitle(item.text) !== normalizeTitle(sub ?? "")) {
+        sub = cleanHeading(item.text);
+        page = headingPage(item.text);
+        pushHeading(item.text, line.links);
+        wrapsHeading = !item.markdown;
       }
       continue;
     }
@@ -215,7 +274,7 @@ function toSections(lines: Line[]): { sections: Section[]; unmatchedTocTitles: s
     buffer.push(line);
   }
   flush();
-  return { sections: mergeHeadingOnlySections(sections), unmatchedTocTitles: [...titles].filter((title) => !matchedTitles.has(title)) };
+  return { sections: mergeHeadingOnlySections(sections), unmatchedTocTitles: [...titles].filter((title) => !matchedTitles.has(title)), scan };
 }
 
 /** A section that is only a heading (a book's title line before its first real section) has nothing to cite. */
@@ -340,15 +399,40 @@ function pack(units: readonly Unit[], fits: (units: readonly Unit[]) => boolean)
   return chunks;
 }
 
+/** Consecutive paragraphs of one kind, so a chunk never spans decision text and the explanation around it. */
+function runsBySpan(paragraphs: readonly Paragraph[]): { span: number | null; paragraphs: Paragraph[] }[] {
+  const runs: { span: number | null; paragraphs: Paragraph[] }[] = [];
+  for (const paragraph of paragraphs) {
+    const last = runs[runs.length - 1];
+    if (last && last.span === paragraph.span) last.paragraphs.push(paragraph);
+    else runs.push({ span: paragraph.span, paragraphs: [paragraph] });
+  }
+  return runs;
+}
+
+const SPOT_CHECK_WORDS = 25;
+
+function withPassages(range: SpanRange, index: number, chunks: readonly Chunk[]): DecisionSpan {
+  const own = chunks.filter((chunk) => chunk.span === index);
+  const words = own.flatMap((chunk) => chunk.text.split(/\s+/).filter(Boolean));
+  return {
+    ...range,
+    words: words.length,
+    opening: words.slice(0, SPOT_CHECK_WORDS).join(" "),
+    closing: words.slice(-SPOT_CHECK_WORDS).join(" "),
+    chunkOrdinals: own.map((chunk) => chunk.ordinal),
+  };
+}
+
 /**
  * Body to passages. Line-based, because most putusan are PDF text with hard line breaks and almost no markdown
  * headings. Headings come from the table of contents, markdown, KITAB/BAB/PASAL lines and short all-caps lines.
  * Only table-of-contents titles start a new section, so a chunk never spans two sections of a compiled book.
  * A chunk holds at most `CHUNK_WORDS.max` words and fills at most `budget.max` tokens of the embedder's input.
  */
-export function chunkBody(body: string, budget: TokenBudget): ChunkedBody {
+export function chunkBody(body: string, budget: TokenBudget, options: ChunkOptions = {}): ChunkedBody {
   const chunks: Chunk[] = [];
-  const { sections, unmatchedTocTitles } = toSections(toLines(body));
+  const { sections, unmatchedTocTitles, scan } = toSections(toLines(body), options.decisionSpans ?? false);
   const overheads = new Map<string | null, number>();
   const overheadOf = (label: string | null) => {
     if (!overheads.has(label)) overheads.set(label, budget.overhead(label));
@@ -356,25 +440,28 @@ export function chunkBody(body: string, budget: TokenBudget): ChunkedBody {
   };
   for (const section of sections) {
     const labelOf = (paragraph: Paragraph) => sectionLabel({ top: section.top, sub: paragraph.sub });
-    const units = section.paragraphs.flatMap((paragraph) => toUnits(paragraph, labelOf(paragraph), budget, overheadOf));
-    const fits = (candidate: readonly Unit[]) =>
-      sumWords(candidate) <= CHUNK_WORDS.max &&
-      overheadOf(labelOf(candidate[0] as Unit)) + candidate.reduce((total, unit) => total + unit.tokens, 0) <= budget.max;
-    for (const paragraphs of pack(units, fits)) {
-      const first = paragraphs[0] as Paragraph;
-      const text = textOf(paragraphs);
-      chunks.push({
-        ordinal: chunks.length + 1,
-        top: section.top,
-        sub: first.sub,
-        page: first.page,
-        text,
-        wordCount: countWords(text),
-        links: [...new Set(paragraphs.flatMap((paragraph) => paragraph.links))],
-      });
+    for (const run of runsBySpan(section.paragraphs)) {
+      const units = run.paragraphs.flatMap((paragraph) => toUnits(paragraph, labelOf(paragraph), budget, overheadOf));
+      const fits = (candidate: readonly Unit[]) =>
+        sumWords(candidate) <= CHUNK_WORDS.max &&
+        overheadOf(labelOf(candidate[0] as Unit)) + candidate.reduce((total, unit) => total + unit.tokens, 0) <= budget.max;
+      for (const paragraphs of pack(units, fits)) {
+        const first = paragraphs[0] as Paragraph;
+        const text = textOf(paragraphs);
+        chunks.push({
+          ordinal: chunks.length + 1,
+          top: section.top,
+          sub: first.sub,
+          page: first.page,
+          text,
+          wordCount: countWords(text),
+          links: [...new Set(paragraphs.flatMap((paragraph) => paragraph.links))],
+          span: run.span,
+        });
+      }
     }
   }
-  return { chunks, unmatchedTocTitles };
+  return { chunks, unmatchedTocTitles, decisions: { ...scan, spans: scan.spans.map((range, index) => withPassages(range, index, chunks)) } };
 }
 
 export function sectionLabel(chunk: Pick<Chunk, "top" | "sub">): string | null {

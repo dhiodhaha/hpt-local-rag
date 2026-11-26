@@ -3,12 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { readVault, type NoteId, type VaultNote } from "../corpus/index.ts";
 import { all, get, inTransaction, openDb, vectorBlob, type Db } from "../../shared/db.ts";
-import { chunkBody, sectionLabel, CHUNK_WORDS, CHUNKER_VERSION, type Chunk, type TokenBudget } from "./chunk.ts";
+import { chunkBody, sectionLabel, CHUNK_WORDS, CHUNKER_VERSION, type Chunk, type ChunkedBody, type TokenBudget } from "./chunk.ts";
 import { embedAll, loadEmbedder, loadTokenMeter, passageInput, type Embedder, type TokenMeter } from "./embed.ts";
 import { openEmbeddingCache } from "./embedding-cache.ts";
 import { fold, FOLD_VERSION } from "./fold.ts";
-import { describeNote, describePassage, UnknownFolderError, type NoteMeta, type PassageMeta } from "./putusan-meta.ts";
+import { describeNote, describePassage, isCompiledBook, UnknownFolderError, type NoteMeta, type PassageMeta } from "./putusan-meta.ts";
 import { SCHEMA_SQL, SCHEMA_VERSION, vectorSchemaSql } from "./schema.ts";
+import { spanLog, spanLogMarkdown } from "./span-log.ts";
 import {
   SOURCE_TYPES,
   passageId,
@@ -35,7 +36,7 @@ type PlannedPassage = { id: PassageId; chunk: Chunk; section: string | null; met
 type PlannedMapChunk = { chunk: Chunk; section: string | null; links: NoteId[]; textHash: string };
 
 type NotePlan =
-  | { kind: "putusan"; note: VaultNote; meta: NoteMeta; passages: PlannedPassage[]; unmatchedTocTitles: number }
+  | { kind: "putusan"; note: VaultNote; meta: NoteMeta; passages: PlannedPassage[]; unmatchedTocTitles: number; decisions: ChunkedBody["decisions"] }
   | { kind: "map"; note: VaultNote; chunks: PlannedMapChunk[] };
 
 const sha = (text: string, length?: number) => createHash("sha256").update(text).digest("hex").slice(0, length);
@@ -61,7 +62,9 @@ export function planVault(notes: readonly VaultNote[], meter: TokenMeter): NoteP
   const plans: NotePlan[] = [];
 
   for (const note of notes) {
-    const { chunks, unmatchedTocTitles } = chunkBody(note.body, budgetFor(meter, note.title));
+    const { chunks, unmatchedTocTitles, decisions } = chunkBody(note.body, budgetFor(meter, note.title), {
+      decisionSpans: note.collection === "putusan" && isCompiledBook(note),
+    });
     for (const target of new Set(chunks.flatMap((chunk) => chunk.links))) {
       if (!ids.has(target)) problems.push(`${note.id}: link to ${target} resolves to no note`);
     }
@@ -75,7 +78,7 @@ export function planVault(notes: readonly VaultNote[], meter: TokenMeter): NoteP
           meta: describePassage(note, meta, chunk),
           textHash: sha(chunk.text, 16),
         }));
-        plans.push({ kind: "putusan", note, meta, passages, unmatchedTocTitles: unmatchedTocTitles.length });
+        plans.push({ kind: "putusan", note, meta, passages, unmatchedTocTitles: unmatchedTocTitles.length, decisions });
       } catch (error) {
         if (!(error instanceof UnknownFolderError)) throw error;
         problems.push(error.message);
@@ -371,6 +374,25 @@ async function embedInputs(inputs: EmbeddingInputs, { embedder, cacheFile }: Vec
   }
 }
 
+function summarizeDecisions(plans: readonly NotePlan[]): BuildReport["decisionSpans"] {
+  const decisions = plans.flatMap((plan) => (plan.kind === "putusan" ? [plan.decisions] : []));
+  return {
+    spans: decisions.reduce((total, { spans }) => total + spans.length, 0),
+    words: decisions.reduce((total, { spans }) => total + spans.reduce((sum, span) => sum + span.words, 0), 0),
+    passages: decisions.reduce((total, { spans }) => total + spans.reduce((sum, span) => sum + span.chunkOrdinals.length, 0), 0),
+    keputusanWithoutSpan: decisions.reduce((total, { withoutSpan }) => total + withoutSpan.length, 0),
+    unscopedMarkers: decisions.reduce((total, { unscopedMarkers }) => total + unscopedMarkers.length, 0),
+  };
+}
+
+function writeSpanLog(dir: string, plans: readonly NotePlan[]): void {
+  const notes = plans.flatMap((plan) => (plan.kind === "putusan" && isCompiledBook(plan.note) ? [{ noteId: plan.note.id, decisions: plan.decisions }] : []));
+  const log = spanLog(notes, CHUNKER_VERSION);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "fikih-putusan-spans.json"), JSON.stringify(log, null, 2));
+  fs.writeFileSync(path.join(dir, "fikih-putusan-spans.md"), spanLogMarkdown(log));
+}
+
 function summarize(plans: readonly NotePlan[]): Pick<BuildReport, "passagesBySourceType" | "words" | "bookSections" | "unmatchedTocTitles"> {
   const passagesBySourceType = Object.fromEntries(SOURCE_TYPES.map((type) => [type, 0])) as Record<SourceType, number>;
   const citableWords: number[] = [];
@@ -388,7 +410,7 @@ function summarize(plans: readonly NotePlan[]): Pick<BuildReport, "passagesBySou
       citableWords.push(chunk.wordCount);
       if (meta.parent === null) continue;
       const last = bookSections[bookSections.length - 1];
-      if (last && last.noteId === plan.note.id && last.section === (chunk.top ?? section)) {
+      if (last && last.noteId === plan.note.id && last.section === (chunk.top ?? section) && last.sourceType === meta.sourceType) {
         last.words += chunk.wordCount;
       } else {
         bookSections.push({ noteId: plan.note.id, section: chunk.top ?? section, sourceType: meta.sourceType, page: chunk.page, words: chunk.wordCount });
@@ -462,9 +484,11 @@ export async function buildIndex(options: BuildOptions): Promise<BuildReport> {
       mapLinks,
     },
     ...summary,
+    decisionSpans: summarizeDecisions(plans),
     tokens,
     drift: driftAgainst(before, after),
   };
   fs.writeFileSync(`${options.outFile}.report.json`, JSON.stringify(report, null, 2));
+  writeSpanLog(path.join(path.dirname(options.outFile), "labels"), plans);
   return report;
 }

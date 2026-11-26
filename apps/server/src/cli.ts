@@ -29,7 +29,9 @@ function printBuild(report: BuildReport, outFile: string): void {
     console.log(`Embeddings (${embedding.model}, ${embedding.dims} dims): ${embedding.embedded} computed in ${(embedding.ms / 1000).toFixed(1)} s, ${embedding.cached} from the cache, cache file ${cacheMb} MB`);
   }
   console.log(report.drift === null ? "Drift: no earlier comparable index" : `Drift: ${report.drift.added} added, ${report.drift.removed} removed, ${report.drift.changed.length} changed`);
-  console.log(`D12a hand-check: ${report.bookSections.length} compiled-book sections and ${report.unmatchedTocTitles.length} notes with unmatched table-of-contents titles are in ${outFile}.report.json`);
+  const { decisionSpans } = report;
+  console.log(`Fikih putusan spans: ${decisionSpans.spans} (${decisionSpans.words} words, ${decisionSpans.passages} passages), ${decisionSpans.keputusanWithoutSpan} KEPUTUSAN headings without one. Spot-check log: ${path.join(path.dirname(outFile), "labels", "fikih-putusan-spans.md")}`);
+  console.log(`${report.unmatchedTocTitles.length} notes with unmatched table-of-contents titles are in ${outFile}.report.json`);
 }
 
 const MAX_LINK_REASONS = 3;

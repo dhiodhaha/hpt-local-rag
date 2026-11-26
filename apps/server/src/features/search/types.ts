@@ -171,6 +171,8 @@ export type BuildReport = {
   /** Tokens per embedder input, before the model would truncate it. A build fails rather than report a passage over the limit. */
   tokens: SizeReport;
   bookSections: { noteId: NoteId; section: string | null; sourceType: SourceType; page: number | null; words: number }[];
+  /** Decision spans found in the compiled books (D12). The spans themselves are in the spot-check log beside the index. */
+  decisionSpans: { spans: number; words: number; passages: number; keputusanWithoutSpan: number; unscopedMarkers: number };
   /** Compiled books whose table-of-contents titles were not all found as headings in the body. */
   unmatchedTocTitles: { noteId: NoteId; count: number }[];
   /** Against the index that was replaced. Null on a first build or after a version change. */
