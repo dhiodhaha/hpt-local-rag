@@ -1,6 +1,5 @@
 import type { VaultNote } from "../corpus/index.ts";
 import type { Chunk } from "./chunk.ts";
-import { fold } from "./fold.ts";
 import type { Locator, SourceType } from "./types.ts";
 
 type FolderRule = {
@@ -25,12 +24,12 @@ export const FOLDER_RULES: readonly FolderRule[] = [
 ];
 
 /**
- * D12: a section of a compiled book is a putusan only when its table-of-contents title starts with KEPUTUSAN.
- * A book without a table of contents has no sections, so all of it is penjelasan. That errs toward the
- * weaker label: explanation labelled as a decision is the costlier mistake.
+ * D12: inside a compiled book only a decision span is a putusan (`decision-spans.ts`). Everything else, a KEPUTUSAN
+ * section without a marker included, is penjelasan. That errs toward the weaker label: explanation labelled as a
+ * decision is the costlier mistake.
  */
 function bookSectionType(chunk: Chunk): SourceType {
-  return chunk.top !== null && /^keputusan\b/.test(fold(chunk.top)) ? "putusan" : "penjelasan";
+  return chunk.span !== null ? "putusan" : "penjelasan";
 }
 
 export class UnknownFolderError extends Error {}
@@ -52,6 +51,12 @@ function ruleFor(note: VaultNote): FolderRule {
   const rule = FOLDER_RULES.find((candidate) => candidate.folder.test(note.folder ?? ""));
   if (!rule) throw new UnknownFolderError(`${note.id}: folder ${JSON.stringify(note.folder)} matches no FOLDER_RULES row`);
   return rule;
+}
+
+/** True for the notes whose sections are labelled one by one. A note in no known folder is not one. */
+export function isCompiledBook(note: VaultNote): boolean {
+  const rule = FOLDER_RULES.find((candidate) => candidate.folder.test(note.folder ?? ""));
+  return rule !== undefined && typeof rule.sourceType === "function";
 }
 
 export function describeNote(note: VaultNote): NoteMeta {

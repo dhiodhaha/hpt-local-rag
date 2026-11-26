@@ -26,10 +26,25 @@ describe("build", () => {
     assert.ok(report.words.map.passages === report.counts.mapPassages);
   });
 
-  test("a compiled book labels only its KEPUTUSAN section a putusan", () => {
+  test("a compiled book labels only the text after the Memutuskan line a putusan", () => {
     const sections = report.bookSections.map((section) => [section.section, section.sourceType]);
-    assert.deepEqual(sections, [["BAGIAN UMUM", "penjelasan"], ["KEPUTUSAN TENTANG LUMBUNG", "putusan"]]);
-    assert.equal(report.bookSections[1]?.page, 12);
+    assert.deepEqual(sections, [["BAGIAN UMUM", "penjelasan"], ["KEPUTUSAN TENTANG LUMBUNG", "penjelasan"], ["KEPUTUSAN TENTANG LUMBUNG", "putusan"]]);
+    assert.equal(report.bookSections[2]?.page, 12);
+    assert.equal(report.passagesBySourceType.putusan, 1);
+  });
+
+  test("the spot-check log names each span with its passages, and the report keeps the counts", () => {
+    assert.equal(report.decisionSpans.spans, 1);
+    assert.equal(report.decisionSpans.passages, 1);
+    assert.equal(report.decisionSpans.keputusanWithoutSpan, 0);
+    const log = JSON.parse(fs.readFileSync(path.join(dir, "labels", "fikih-putusan-spans.json"), "utf8"));
+    assert.equal(log.spans.length, 1);
+    assert.equal(log.spans[0].noteId, "putusan/fikih-contoh-bagian-a");
+    assert.equal(log.spans[0].heading, "KEPUTUSAN TENTANG LUMBUNG");
+    assert.equal(log.spans[0].marker, "Memutuskan :");
+    assert.equal(log.spans[0].words, report.decisionSpans.words);
+    assert.match(log.spans[0].passageIds[0], /^putusan\/fikih-contoh-bagian-a#\d+$/);
+    assert.match(fs.readFileSync(path.join(dir, "labels", "fikih-putusan-spans.md"), "utf8"), /KEPUTUSAN TENTANG LUMBUNG/);
   });
 
   test("a rebuild of the same vault has the same fingerprint and no drift", async () => {

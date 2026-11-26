@@ -13,6 +13,8 @@ const TOC_BOOK = [
   "BAGIAN UMUM  ",
   hardWrapped(sentences(2, 160), 5),
   "KEPUTUSAN TENTANG LUMBUNG (HALAMAN 12)  ",
+  `Menimbang: ${sentences(6, 40)}`,
+  "Memutuskan :  ",
   `1. ${sentences(3, 110)}`,
 ].join("\n");
 
