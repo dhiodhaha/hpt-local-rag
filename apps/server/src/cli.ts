@@ -1,9 +1,10 @@
 import { parseArgs } from "node:util";
-import { buildIndex, type BuildReport } from "./features/search/index.ts";
+import { buildIndex, openIndex, statusOf, type BuildReport, type SearchResult } from "./features/search/index.ts";
 import { config } from "./shared/config.ts";
 
 const USAGE = `Usage:
-  hpt build [--vault <dir>] [--out <file>]`;
+  hpt build [--vault <dir>] [--out <file>]
+  hpt search "<question>" [--limit 10] [--note <note id>] [--json]`;
 
 function printBuild(report: BuildReport, outFile: string): void {
   const mb = (report.bytes / 1_048_576).toFixed(1);
@@ -14,6 +15,24 @@ function printBuild(report: BuildReport, outFile: string): void {
   console.log(`Words per citable passage: p10 ${p10}, p50 ${p50}, p90 ${p90}, max ${max}`);
   console.log(report.drift === null ? "Drift: no earlier comparable index" : `Drift: ${report.drift.added} added, ${report.drift.removed} removed, ${report.drift.changed.length} changed`);
   console.log(`D12a hand-check: ${report.bookSections.length} compiled-book sections and ${report.unmatchedTocTitles.length} notes with unmatched table-of-contents titles are in ${outFile}.report.json`);
+}
+
+function printSearch(result: SearchResult): void {
+  result.hits.forEach((hit, index) => {
+    const { passage } = hit;
+    const superseded = statusOf(passage) === "superseded" ? "superseded" : null;
+    const label = [passage.sourceType, passage.year, passage.number ? `no. ${passage.number}` : null, superseded].filter((part) => part !== null).join(" · ");
+    console.log(`${index + 1}. [${label}] ${passage.title}  #${passage.ordinal}  ${hit.score.toFixed(4)}`);
+    const reasons = hit.reasons.map((reason) => (reason.kind === "direct" ? `${reason.channel} #${reason.rank}` : `via ${reason.from.noteId} (#${reason.rank})`));
+    const identical = hit.duplicates.length > 0 ? ` · ${hit.duplicates.length} identical collapsed` : "";
+    console.log(`   ${reasons.join(" · ")}${identical}`);
+    if (passage.section) console.log(`   section: ${passage.section}`);
+    console.log(`   ${passage.text.replace(/\s+/g, " ").slice(0, 160)}...`);
+  });
+  const { evidence } = result;
+  const via = evidence.signals.topIsDirect ? "direct" : "via link";
+  console.log(`evidence ${evidence.level} (coverage ${evidence.signals.topCoverage.toFixed(2)}, ${via}), keyword ${result.ms.keyword.toFixed(1)} ms, total ${result.ms.total.toFixed(1)} ms`);
+  if (result.leads.length > 0) console.log(`leads: ${result.leads.map((lead) => lead.noteId).join(", ")}`);
 }
 
 function fail(message: string): number {
@@ -33,6 +52,27 @@ async function main(argv: string[]): Promise<number> {
       onProgress: (message) => console.log(message),
     });
     printBuild(report, outFile);
+    return 0;
+  }
+  if (command === "search") {
+    const { values, positionals } = parseArgs({
+      args: rest,
+      allowPositionals: true,
+      options: { limit: { type: "string" }, note: { type: "string" }, json: { type: "boolean" } },
+    });
+    const question = positionals.join(" ").trim();
+    if (question === "") return fail("Missing question.");
+    const index = openIndex({ path: config.indexFile });
+    try {
+      const result = await index.search(question, {
+        limit: values.limit === undefined ? undefined : Number(values.limit),
+        filter: values.note === undefined ? undefined : { noteIds: [values.note] },
+      });
+      if (values.json) console.log(JSON.stringify(result, null, 2));
+      else printSearch(result);
+    } finally {
+      index.close();
+    }
     return 0;
   }
   return fail(USAGE);
