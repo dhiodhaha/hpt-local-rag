@@ -42,6 +42,7 @@ export function fakeIndex(passages: readonly Passage[]): FakeIndex {
       return result;
     },
     getPassages: (ids) => new Map(passages.filter((passage) => ids.includes(passage.id)).map((passage) => [passage.id as PassageId, passage])),
+    passagesOfNote: (noteId) => passages.filter((passage) => passage.noteId === noteId).sort((a, b) => a.ordinal - b.ordinal),
     hasPutusan: () => true,
     close: () => {},
   };

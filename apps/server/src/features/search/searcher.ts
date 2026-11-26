@@ -245,6 +245,7 @@ export function openIndex(options: { path: string; embedder?: EmbedderSource }):
       const rows = all<PassageRow>(db, `${PASSAGE_SELECT} WHERE p.id IN (${placeholders(ids.length)})`, ...ids);
       return new Map(rows.map((row) => [row.id as PassageId, toPassage(row)]));
     },
+    passagesOfNote: (noteId) => all<PassageRow>(db, `${PASSAGE_SELECT} WHERE n.id = ? ORDER BY p.ordinal`, noteId).map(toPassage),
     hasPutusan: (noteId) => get(db, "SELECT 1 AS found FROM notes WHERE id = ? AND collection = 'putusan'", noteId) !== undefined,
     close: () => db.close(),
   };

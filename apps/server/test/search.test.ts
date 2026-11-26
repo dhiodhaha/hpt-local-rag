@@ -135,3 +135,23 @@ describe("open", () => {
     assert.throws(() => openIndex({ path: other }), /fold_version.*hpt build/);
   });
 });
+
+describe("passagesOfNote", () => {
+  test("lists every citable passage of a note in reading order, with the note's own metadata", () => {
+    const passages = index.passagesOfNote("putusan/hpt-jilid-1-kitab-gudang");
+    assert.ok(passages.length > 1, "the fixture note is split into several passages");
+    assert.deepEqual(passages.map((passage) => passage.ordinal), passages.map((_, at) => at + 1));
+    assert.ok(passages.every((passage) => passage.noteId === "putusan/hpt-jilid-1-kitab-gudang" && passage.title === "HPT Jilid 1 Kitab Gudang"));
+    assert.ok(passages.every((passage) => passage.id === `putusan/hpt-jilid-1-kitab-gudang#${passage.ordinal}`));
+  });
+
+  test("returns exactly what getPassages returns for the same ids", () => {
+    const listed = index.passagesOfNote("putusan/tja-1-masalah-perahu");
+    const fetched = index.getPassages(listed.map((passage) => passage.id));
+    assert.deepEqual(listed, listed.map((passage) => fetched.get(passage.id)));
+  });
+
+  test("is empty for a note that is not citable text: a source card, a concept, an unknown id", () => {
+    for (const id of ["sources/hpt-jilid-1-kitab-gudang", "concepts/pengomposan", "putusan/tidak-ada"]) assert.deepEqual(index.passagesOfNote(id), [], id);
+  });
+});

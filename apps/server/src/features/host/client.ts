@@ -1,5 +1,7 @@
 import { FAILURE_COPY, type AnswerEvent, type ConversationId, type ConversationSummary, type OpenedConversation, type Outcome, type Scope, type SearchResult } from "../answer/client.ts";
+import type { NoteId } from "../corpus/index.ts";
 import type { Connection, Effort, FailureCode } from "../providers/index.ts";
+import type { Passage } from "../search/index.ts";
 
 /**
  * The engine as a service for one UI process. This file is the browser-safe half: the wire types, the Pipe a transport
@@ -56,14 +58,16 @@ export type HostErrorCode = "bad_request" | "not_found" | "index_unavailable" | 
 export type HostError = { readonly code: HostErrorCode; readonly message: string };
 
 /**
- * One entry per method: its params, what streams before the result, and the result. `ask` streams. The Riwayat methods answer
- * once, so their `event` is `never`. Reserved for the reader: `passages`.
+ * One entry per method: its params, what streams before the result, and the result. `ask` streams. The Riwayat methods and `passages`
+ * (the reader's) answer once, so their `event` is `never`.
  */
 export type Methods = {
   ask: { params: AskParams; event: AnswerEvent; result: AskResult };
   list: { params: null; event: never; result: { readonly conversations: readonly ConversationSummary[] } };
   open: { params: { readonly conversation: ConversationId }; event: never; result: OpenedConversation };
   search: { params: { readonly query: string }; event: never; result: SearchResult };
+  /** The whole note, in reading order. `not_found` when the index has no citable text under that id. */
+  passages: { params: { readonly noteId: NoteId }; event: never; result: { readonly passages: readonly Passage[] } };
   rename: { params: { readonly conversation: ConversationId; readonly title: string }; event: never; result: { readonly conversation: ConversationSummary } };
   remove: { params: { readonly conversation: ConversationId }; event: never; result: { readonly conversation: ConversationId } };
 };
