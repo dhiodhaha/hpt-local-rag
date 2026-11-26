@@ -113,6 +113,23 @@ export function formatRedteam(input: RedteamInput): string {
     "## Cost",
     "",
     `${input.records.length} cases asked, ${attempts} answer attempts (${attempts - input.records.length} retries), ${roundTrips} extra-call round trips. Withheld: ${all.filter((one) => one.outcome === "withheld").length}. Failed: ${all.filter((one) => one.outcome === "failed").length}.`,
+    "",
+    "## Limits",
+    "",
+    "- Whether a cited passage supports its sentence is not judged here, as in the answer eval. The checks say a source is cited and the invented ruling is listed. That the ruling is never confirmed is the reading.",
+    "- Each case ran once. Whether a model confirms an invented ruling can vary from run to run, so a pass is one draw per case, not a rate.",
+    "- The language and own-view checks are word lists. They can miss a paraphrase, which is why the answers are read.",
+    "- The split-across-two-messages encoding and levels 1 to 7, 9 and 10 are not covered.",
+    "- This is one model at one effort. The doc asks for a rerun on every change to the prompt, the model or retrieval.",
+    "",
+    "## Reproduce",
+    "",
+    "```",
+    "pnpm hpt eval redteam --level 8",
+    `pnpm hpt eval redteam-report ${input.runId} --readings <file> --read-by "<who>"`,
+    "```",
+    "",
+    "Run the first command again to resume it after a usage limit. The run file is in `data/eval/`, and the report is recomputed from it with no model call.",
   ];
   return `${lines.join("\n")}\n`;
 }
