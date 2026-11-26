@@ -1,0 +1,317 @@
+/* The rules the Doop desktop frames (D7.1 to D7.4) declare on the page itself, outside any component, copied as they are. */
+.lbl {
+  font-family: var(--font-label);
+  font-size: 11.5px;
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-ink-muted);
+}
+.nw {
+  white-space: nowrap;
+}
+.scard {
+  border-radius: 6px;
+  padding: 14px 18px;
+  background: var(--color-surface);
+}
+.scard .h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.num {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 11.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.num.wait {
+  background: transparent;
+  color: var(--color-ink-muted);
+  box-shadow: inset 0 0 0 1px var(--color-rule);
+}
+.scard .nm {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.scard .badges {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 0 32px;
+}
+.scard .meta {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+  margin: 6px 0 0 32px;
+}
+.sc-ring {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+  margin: 12px 0 4px 32px;
+}
+.sum {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.5;
+  margin-left: 32px;
+}
+.grp {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.grp .row {
+  border-top: 0;
+  padding: 14px 18px;
+  background: var(--color-surface);
+  border-radius: 6px;
+}
+.grp > :first-child .row {
+  border-radius: var(--radius-md) var(--radius-md) 6px 6px;
+}
+.grp > :last-child .row {
+  border-radius: 6px 6px var(--radius-md) var(--radius-md);
+}
+.grp .count {
+  background: var(--color-ground);
+}
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -3px;
+  background: var(--color-accent);
+  border-radius: 1px;
+  animation: cb 1s steps(2) infinite;
+}
+@keyframes cb {
+  50% {
+    opacity: 0;
+  }
+}
+.fade {
+  color: color-mix(in srgb, var(--color-ink) 45%, var(--color-surface));
+}
+.sk {
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--color-rule) 0%, var(--color-ground) 50%, var(--color-rule) 100%);
+  background-size: 200% 100%;
+  animation: sh 1.6s ease-in-out infinite;
+}
+@keyframes sh {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .caret,
+  .sk {
+    animation: none;
+  }
+}
+
+/* Opened Dalil and Catatan rows, from the Doop frame "Dalil — copy". Class names are prefixed so they cannot meet a component's. */
+.it-open {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: 0 8px 8px;
+}
+.it-open .row {
+  border-top: 0;
+  padding: 16px 8px 12px 10px;
+  background: transparent;
+}
+.it-open .count {
+  background: var(--color-ground);
+}
+.it-card {
+  background: var(--color-ground);
+  border-radius: var(--radius-sm);
+  padding: 14px 14px 12px;
+}
+.it-card + .it-card {
+  margin-top: 6px;
+}
+.it-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.it-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  margin-top: 10px;
+}
+.it-body {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+  margin-top: 4px;
+  text-wrap: pretty;
+}
+.it-quote {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--color-official);
+  font-family: var(--font-read);
+  font-size: 16px;
+  line-height: 1.45;
+}
+.it-cap {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+  margin-top: 14px;
+}
+.it-ar {
+  font-family: var(--font-arabic);
+  font-size: 23px;
+  line-height: 2.25;
+  padding-top: 4px;
+  text-align: right;
+  direction: rtl;
+  margin-top: 4px;
+}
+.it-tr {
+  font-family: var(--font-read);
+  font-size: 17.5px;
+  line-height: 1.45;
+  margin-top: 4px;
+  text-wrap: pretty;
+}
+.it-ex {
+  margin-top: 12px;
+  padding: 10px 12px 11px;
+  border-radius: 10px;
+  background: var(--color-surface);
+  border-left: 3px solid var(--color-rule);
+}
+.it-ex.inf {
+  border-left-color: var(--color-inferred);
+}
+.it-ex .it-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.it-ex p {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+  margin-top: 4px;
+  text-wrap: pretty;
+}
+.it-warn {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-warn-soft);
+  color: var(--color-warn);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* The composer's text field, in the place the Doop component draws its placeholder. */
+.cmp textarea {
+  display: block;
+  width: 100%;
+  min-height: 24px;
+  max-height: 160px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 15.5px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.cmp textarea::placeholder {
+  color: var(--color-ink-muted);
+}
+.send[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The clarify reply's option chips, from the Doop frame "Klarifikasi — copy". */
+.rv-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+  box-shadow: inset 0 0 0 1px var(--color-rule);
+  cursor: pointer;
+}
+.rv-chip:hover {
+  background: var(--color-ground);
+}
+
+.un .bd > .rf:first-child {
+  margin-top: 0;
+}
+.act-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  background: transparent;
+  transition-property: background-color, color;
+  transition-duration: 0.15s;
+}
+.act-btn:hover {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+.act-btn[aria-pressed="true"] {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}

@@ -1,0 +1,35 @@
+{
+  "name": "@hpt/desktop",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "shots": "node scripts/shots.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/eb-garamond": "^5.3.0",
+    "@fontsource-variable/figtree": "^5.3.0",
+    "@fontsource/amiri": "^5.3.0",
+    "@hpt/server": "workspace:*",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zustand": "^5.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.5.0",
+    "electron-vite": "^6.0.0",
+    "playwright": "^1.65.1",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "~8.3.8"
+  }
+}

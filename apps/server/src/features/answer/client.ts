@@ -8,7 +8,7 @@
  */
 export { emptyAnswer, foldAnswer, citedOf } from "./fold.ts";
 
-export { EXCEPTION_WITHHELD, FAILURE_COPY, RESTART, WITHHELD, fallbackNotice, modelName } from "./copy.ts";
+export { EXCEPTION_WITHHELD, FAILURE_COPY, RESTART, RESTART_WHY, WITHHELD, fallbackNotice, modelName } from "./copy.ts";
 
 export { isConversationId } from "./conversation-id.ts";
 export type { ConversationId } from "./conversation-id.ts";

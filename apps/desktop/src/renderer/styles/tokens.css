@@ -1,0 +1,63 @@
+/*
+ * Design tokens, copied verbatim from the Doop canvas 32zM84TK65, theme "calm" (get_tokens, 2026-11-26). The names and values are
+ * the canvas's; this file only wraps them in Tailwind's @theme so they also become utilities. Change a value in Doop first.
+ */
+@theme {
+  --color-*: initial;
+  --radius-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+
+  --color-ground: #fcfcfc;
+  --color-surface: #f2f3f6;
+  --color-ink: #16181d;
+  --color-ink-muted: #5d6368;
+  --color-rule: #e6e7ec;
+  --color-official: #e0f5e7;
+  --color-accent: #2d582c;
+  --color-accent-soft: #d4f2de;
+  --color-caution: #143b71;
+  --color-caution-soft: #ebecfa;
+  --color-ground-deep: #fcfcfc;
+  --color-on-accent: #ffffff;
+  --color-button: #2c3235;
+  --color-button-edge: #2c3235;
+  --color-inferred: #5b3a8e;
+  --color-inferred-soft: #efe9f8;
+  --color-warn: #8a4b0f;
+  --color-warn-soft: #fbeeda;
+  --color-aura-1: #f0b072;
+  --color-aura-2: #f5d38d;
+  --color-aura-3: #eb9db6;
+  --color-aura-4: #c1aef2;
+
+  --radius-sm: 12px;
+  --radius-md: 20px;
+  --radius-lg: 32px;
+  --radius-full: 999px;
+
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+
+  --font-read: "EB Garamond Variable", "EB Garamond", Georgia, serif;
+  --font-ui: "Figtree Variable", "Figtree", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-label: "Figtree Variable", "Figtree", system-ui, sans-serif;
+  --font-arabic: "Amiri", "Noto Naskh Arabic", serif;
+
+  --text-xs: 12px;
+  --text-sm: 13.5px;
+  --text-base: 16px;
+  --text-read: 19px;
+  --text-verdict: 34px;
+
+  --tracking-label: 0.08em;
+}
+
+:root {
+  --font-weight-label: 500;
+}
