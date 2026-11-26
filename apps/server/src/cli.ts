@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { ASK_USAGE, askCommand } from "./commands/ask.ts";
 import { calibrate, formatCalibration, formatComparison, formatReport, labelled, runRetrievalEval, type RetrievalReport } from "./features/eval/index.ts";
 import { buildIndex, loadEmbedder, openIndex, statusOf, type BuildReport, type Channel, type SearchResult } from "./features/search/index.ts";
 import { config } from "./shared/config.ts";
@@ -8,6 +9,7 @@ import { config } from "./shared/config.ts";
 const USAGE = `Usage:
   hpt build [--vault <dir>] [--out <file>] [--keyword-only]
   hpt search "<question>" [--limit 10] [--note <note id>] [--channels keyword,vector] [--json]
+  hpt ask "<question>" [-c] [--note <note id>] [--model sonnet|opus|haiku] [--effort low|medium|high] [--json]
   hpt eval retrieval [--out <dir>] [--misses 30]
   hpt eval compare <before run.json> <after run.json>
   hpt eval evidence <run.json>`;
@@ -111,6 +113,14 @@ async function main(argv: string[]): Promise<number> {
       index.close();
     }
     return 0;
+  }
+  if (command === "ask") {
+    try {
+      return await askCommand(rest);
+    } catch (cause) {
+      return fail(`${cause instanceof Error ? cause.message : String(cause)}
+${ASK_USAGE}`);
+    }
   }
   if (command === "eval" && rest[0] === "retrieval") {
     const { values } = parseArgs({ args: rest.slice(1), options: { out: { type: "string" }, misses: { type: "string" } } });
