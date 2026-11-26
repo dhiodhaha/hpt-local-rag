@@ -1,30 +1,32 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { formatReport, runRetrievalEval } from "./features/eval/index.ts";
+import { calibrate, formatCalibration, formatComparison, formatReport, labelled, runRetrievalEval, type RetrievalReport } from "./features/eval/index.ts";
 import { buildIndex, loadEmbedder, openIndex, statusOf, type BuildReport, type Channel, type SearchResult } from "./features/search/index.ts";
 import { config } from "./shared/config.ts";
 
 const USAGE = `Usage:
   hpt build [--vault <dir>] [--out <file>] [--keyword-only]
   hpt search "<question>" [--limit 10] [--note <note id>] [--channels keyword,vector] [--json]
-  hpt eval retrieval [--out <dir>] [--misses 30]`;
+  hpt eval retrieval [--out <dir>] [--misses 30]
+  hpt eval compare <before run.json> <after run.json>
+  hpt eval evidence <run.json>`;
 
 function printBuild(report: BuildReport, outFile: string): void {
   const mb = (report.bytes / 1_048_576).toFixed(1);
   console.log(`Built ${outFile} (${report.channels.join(" + ")}) in ${(report.ms / 1000).toFixed(1)} s, ${mb} MB, fingerprint ${report.fingerprint.slice(0, 12)}`);
   console.log(`${report.counts.notes} notes, ${report.counts.passages} citable passages, ${report.counts.mapPassages} map passages, ${report.counts.mapLinks} map links`);
   console.log("Citable passages by source_type:", report.passagesBySourceType);
-  const { p10, p50, p90, max } = report.wordCount;
-  console.log(`Words per citable passage: p10 ${p10}, p50 ${p50}, p90 ${p90}, max ${max}`);
+  for (const kind of ["citable", "map"] as const) {
+    const words = report.words[kind];
+    const tokens = report.tokens[kind];
+    console.log(`Words per ${kind} passage: p50 ${words.p50}, p90 ${words.p90}, max ${words.max}; ${words.overLimit} of ${words.passages} over ${report.words.limit}`);
+    console.log(`Tokens per ${kind} passage: p50 ${tokens.p50}, p90 ${tokens.p90}, max ${tokens.max}; ${tokens.overLimit} of ${tokens.passages} over ${report.tokens.limit}`);
+  }
   if (report.embedding) {
     const { embedding } = report;
     const cacheMb = (embedding.cacheBytes / 1_048_576).toFixed(1);
     console.log(`Embeddings (${embedding.model}, ${embedding.dims} dims): ${embedding.embedded} computed in ${(embedding.ms / 1000).toFixed(1)} s, ${embedding.cached} from the cache, cache file ${cacheMb} MB`);
-    for (const kind of ["citable", "map"] as const) {
-      const tokens = embedding.tokens[kind];
-      console.log(`Tokens per ${kind} passage: p50 ${tokens.p50}, p90 ${tokens.p90}, max ${tokens.max}; ${tokens.overLimit} of ${tokens.passages} exceed the model's limit`);
-    }
   }
   console.log(report.drift === null ? "Drift: no earlier comparable index" : `Drift: ${report.drift.added} added, ${report.drift.removed} removed, ${report.drift.changed.length} changed`);
   console.log(`D12a hand-check: ${report.bookSections.length} compiled-book sections and ${report.unmatchedTocTitles.length} notes with unmatched table-of-contents titles are in ${outFile}.report.json`);
@@ -123,6 +125,23 @@ async function main(argv: string[]): Promise<number> {
     } finally {
       index.close();
     }
+    return 0;
+  }
+  if (command === "eval" && rest[0] === "compare") {
+    const [beforeFile, afterFile] = rest.slice(1);
+    if (beforeFile === undefined || afterFile === undefined) return fail(USAGE);
+    const read = (file: string) => JSON.parse(fs.readFileSync(file, "utf8")) as RetrievalReport;
+    const [before, after] = [read(beforeFile), read(afterFile)];
+    console.log(formatComparison(before, after, { before: before.indexFingerprint.slice(0, 8), after: after.indexFingerprint.slice(0, 8) }));
+    return 0;
+  }
+  if (command === "eval" && rest[0] === "evidence") {
+    const file = rest[1];
+    if (file === undefined) return fail(USAGE);
+    const report = JSON.parse(fs.readFileSync(file, "utf8")) as RetrievalReport;
+    const hybrid = report.variants.find((variant) => variant.variant.name === "hybrid");
+    if (!hybrid) return fail("this run has no hybrid variant to calibrate");
+    console.log(formatCalibration(calibrate(labelled(hybrid))));
     return 0;
   }
   return fail(USAGE);

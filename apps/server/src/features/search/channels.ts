@@ -11,6 +11,8 @@ export type ChannelLists = {
   citable: RankedList;
   /** map_passages.rowid. Empty under a filter, because link expansion could break the filter. */
   map: RankedList;
+  /** Cosine between the question and its nearest citable passage. Null for a channel that has no vectors, or when nothing matched. */
+  nearestCosine: number | null;
 };
 
 /** Deep enough that link expansion and the per-note cap still leave `limit` hits. */
@@ -48,7 +50,7 @@ function scopeClause(filter: SearchFilter): { sql: string; params: unknown[] } {
 
 /** The citable pool is computed inside a filter, not post-filtered, so a document scope never under-fills. */
 export function keywordLists(db: Db, query: FtsQuery | null, filter: SearchFilter | undefined): ChannelLists {
-  if (query === null) return { channel: "keyword", citable: [], map: [] };
+  if (query === null) return { channel: "keyword", citable: [], map: [], nearestCosine: null };
   const scope = hasFilter(filter) ? scopeClause(filter as SearchFilter) : null;
   const citable = all<{ rowid: number }>(
     db,
@@ -59,16 +61,18 @@ export function keywordLists(db: Db, query: FtsQuery | null, filter: SearchFilte
   const map = scope
     ? []
     : all<{ rowid: number }>(db, `SELECT rowid FROM map_fts WHERE map_fts MATCH ? ORDER BY ${MAP_BM25} LIMIT ${POOL.map}`, query);
-  return { channel: "keyword", citable: citable.map((row) => row.rowid), map: map.map((row) => row.rowid) };
+  return { channel: "keyword", citable: citable.map((row) => row.rowid), map: map.map((row) => row.rowid), nearestCosine: null };
 }
 
 export function vectorLists(db: Db, vector: Float32Array, filter: SearchFilter | undefined): ChannelLists {
   const scope = hasFilter(filter) ? scopeClause(filter as SearchFilter) : null;
   const nearest = (table: string, pool: number, extra: string) =>
-    `SELECT rowid FROM ${table} WHERE embedding MATCH ? AND k = ${pool} ${extra} ORDER BY distance`;
-  const citable = all<{ rowid: number }>(db, nearest("putusan_vec", POOL.citable, scope ? `AND ${scope.sql}` : ""), vectorBlob(vector), ...(scope?.params ?? []));
+    `SELECT rowid, distance FROM ${table} WHERE embedding MATCH ? AND k = ${pool} ${extra} ORDER BY distance`;
+  const citable = all<{ rowid: number; distance: number }>(db, nearest("putusan_vec", POOL.citable, scope ? `AND ${scope.sql}` : ""), vectorBlob(vector), ...(scope?.params ?? []));
   const map = scope ? [] : all<{ rowid: number }>(db, nearest("map_vec", POOL.map, ""), vectorBlob(vector));
-  return { channel: "vector", citable: citable.map((row) => row.rowid), map: map.map((row) => row.rowid) };
+  const closest = citable[0];
+  // The vec0 tables use the cosine metric, so a distance is 1 - cosine.
+  return { channel: "vector", citable: citable.map((row) => row.rowid), map: map.map((row) => row.rowid), nearestCosine: closest === undefined ? null : 1 - closest.distance };
 }
 
 /** For notes reached only through a link: the passage that best matches the question, else the first one. */

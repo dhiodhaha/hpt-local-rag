@@ -12,7 +12,7 @@ let report: BuildReport;
 
 before(async () => {
   dir = tempDir();
-  report = await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "hpt.sqlite"), channels: ["keyword"] });
+  report = await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "hpt.sqlite"), channels: ["keyword"], tokenMeter: fakeEmbedder() });
 });
 
 describe("build", () => {
@@ -22,7 +22,8 @@ describe("build", () => {
     assert.ok(report.passagesBySourceType.fatwa >= 2);
     assert.ok(report.passagesBySourceType.tanya_jawab >= 1);
     assert.ok(report.passagesBySourceType.hpt >= 2);
-    assert.ok(report.wordCount.max <= 300);
+    assert.ok(report.words.citable.max <= 300 && report.words.citable.overLimit === 0);
+    assert.ok(report.words.map.passages === report.counts.mapPassages);
   });
 
   test("a compiled book labels only its KEPUTUSAN section a putusan", () => {
@@ -32,9 +33,9 @@ describe("build", () => {
   });
 
   test("a rebuild of the same vault has the same fingerprint and no drift", async () => {
-    const again = await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "again.sqlite"), channels: ["keyword"] });
+    const again = await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "again.sqlite"), channels: ["keyword"], tokenMeter: fakeEmbedder() });
     assert.equal(again.fingerprint, report.fingerprint);
-    const rebuilt = await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "again.sqlite"), channels: ["keyword"] });
+    const rebuilt = await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "again.sqlite"), channels: ["keyword"], tokenMeter: fakeEmbedder() });
     assert.deepEqual(rebuilt.drift, { added: 0, removed: 0, changed: [] });
   });
 
@@ -44,7 +45,7 @@ describe("build", () => {
       { id: "concepts/putus", title: "Putus", body: "Lihat [[putusan/tidak-ada|Hilang]]." },
     ];
     const out = path.join(dir, "broken.sqlite");
-    await assert.rejects(buildIndex({ vaultDir: writeVault(broken), outFile: out, channels: ["keyword"] }), (error: unknown) => {
+    await assert.rejects(buildIndex({ vaultDir: writeVault(broken), outFile: out, channels: ["keyword"], tokenMeter: fakeEmbedder() }), (error: unknown) => {
       assert.ok(error instanceof BuildError);
       assert.equal(error.problems.length, 2);
       assert.match(error.problems.join("\n"), /putusan\/aneh/);
@@ -58,7 +59,7 @@ describe("build", () => {
     const orphan = notes.map((note) => (note.id === "sources/tja-1-masalah-perahu" ? { ...note, body: "## Summary\n\nTanpa tautan." } : note));
     const out = path.join(dir, "orphan.sqlite");
     fs.writeFileSync(out, "old");
-    await assert.rejects(buildIndex({ vaultDir: writeVault(orphan), outFile: out, channels: ["keyword"] }), BuildError);
+    await assert.rejects(buildIndex({ vaultDir: writeVault(orphan), outFile: out, channels: ["keyword"], tokenMeter: fakeEmbedder() }), BuildError);
     assert.equal(fs.readFileSync(out, "utf8"), "old");
   });
 });
@@ -95,19 +96,33 @@ describe("vector build", () => {
     assert.ok((report.embedding?.embedded ?? 0) >= 1 && (report.embedding?.embedded ?? 99) <= 2);
   });
 
-  test("passages longer than the model's token limit are counted, citable and map apart", async () => {
-    const cacheFile = path.join(tempDir(), "embeddings.sqlite");
-    const roomy = await vectorBuild(fakeEmbedder({ maxTokens: 512 }), notes, cacheFile);
-    assert.equal(roomy.embedding?.tokens.citable.overLimit, 0);
-    const tight = await vectorBuild(fakeEmbedder({ maxTokens: 100 }), notes, cacheFile);
-    assert.ok((tight.embedding?.tokens.citable.overLimit ?? 0) > 0);
-    assert.equal(tight.embedding?.tokens.citable.passages, tight.counts.passages);
-    assert.equal(tight.embedding?.tokens.map.overLimit, 0);
+  test("a tighter token limit makes more passages, and none of them is over it", async () => {
+    const roomy = await vectorBuild(fakeEmbedder({ maxTokens: 512 }), notes, path.join(tempDir(), "embeddings.sqlite"));
+    const tight = await vectorBuild(fakeEmbedder({ maxTokens: 100 }), notes, path.join(tempDir(), "embeddings.sqlite"));
+    assert.ok(tight.counts.passages > roomy.counts.passages);
+    assert.equal(tight.tokens.limit, 100);
+    assert.ok(tight.tokens.citable.max <= 100 && tight.tokens.map.max <= 100);
+    assert.deepEqual([tight.tokens.citable.overLimit, tight.tokens.map.overLimit], [0, 0]);
+    assert.equal(tight.tokens.citable.passages, tight.counts.passages);
+  });
+
+  test("a build refuses to write passages that the model would truncate", async () => {
+    const fake = fakeEmbedder({ maxTokens: 100 });
+    const lineBreaks = (input: string) => input.split("\n").length - 1;
+    const undercounting = { ...fake, tokenCount: (input: string) => fake.tokenCount(input) + 10 * lineBreaks(input) };
+    await assert.rejects(vectorBuild(undercounting, notes, path.join(tempDir(), "embeddings.sqlite")), /over the 100-token limit/);
+  });
+
+  test("passage ids do not depend on the channels: a keyword-only build splits as a vector build does", async () => {
+    const meter = fakeEmbedder({ maxTokens: 100 });
+    const vector = await vectorBuild(meter, notes, path.join(tempDir(), "embeddings.sqlite"));
+    const keywordOnly = await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "kw100.sqlite"), channels: ["keyword"], tokenMeter: meter });
+    assert.deepEqual([keywordOnly.counts.passages, keywordOnly.counts.mapPassages], [vector.counts.passages, vector.counts.mapPassages]);
   });
 
   test("a keyword-only build never calls the embedder and keeps the keyword fingerprint", async () => {
     const embedder = fakeEmbedder();
-    const keywordOnly = await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "kw.sqlite"), channels: ["keyword"], embedding: { cacheFile: path.join(dir, "c.sqlite"), modelDir: dir, embedder } });
+    const keywordOnly = await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "kw.sqlite"), channels: ["keyword"], tokenMeter: fakeEmbedder(), embedding: { cacheFile: path.join(dir, "c.sqlite"), modelDir: dir, embedder } });
     assert.equal(keywordOnly.embedding, null);
     assert.deepEqual(embedder.batches, []);
     assert.equal(keywordOnly.fingerprint, report.fingerprint);

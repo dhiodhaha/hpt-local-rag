@@ -1,5 +1,5 @@
 import type { NoteId } from "../corpus/index.ts";
-import type { Embedder } from "./embed.ts";
+import type { Embedder, TokenMeter } from "./embed.ts";
 
 declare const passageIdBrand: unique symbol;
 export type PassageId = string & { readonly [passageIdBrand]: true };
@@ -79,8 +79,10 @@ export type Evidence = {
     /** Share of the question's content terms found in the top hit's title and text, 0..1. */
     topCoverage: number;
     topIsDirect: boolean;
-    /** Share of the top 5 hits found directly by every searched channel, 0..1. Null when only one channel ran. Not yet part of the level. */
+    /** Share of the top 5 hits found directly by every searched channel, 0..1. Null when only one channel ran. */
     channelAgreement: number | null;
+    /** Cosine between the question and its nearest citable passage. Null without the vector channel. */
+    nearestCosine: number | null;
   };
 };
 
@@ -134,11 +136,18 @@ export type BuildOptions = {
   channels: readonly Channel[];
   /** Required when `channels` includes "vector". Without an `embedder` the build loads the model and may download it. */
   embedding?: { cacheFile: string; modelDir: string; embedder?: Embedder };
+  /**
+   * Passage boundaries depend on the model's token limit, and a passage id must not depend on the channels built, so every build
+   * needs a meter. Defaults to the embedder, else the tokenizer in `embedding.modelDir`.
+   */
+  tokenMeter?: TokenMeter;
   revisionsFile?: string;
   onProgress?: (message: string) => void;
 };
 
-export type TokenSummary = { passages: number; overLimit: number; p50: number; p90: number; max: number };
+export type SizeSummary = { passages: number; overLimit: number; p50: number; p90: number; max: number };
+
+export type SizeReport = { limit: number; citable: SizeSummary; map: SizeSummary };
 
 export type EmbeddingReport = {
   model: string;
@@ -146,8 +155,6 @@ export type EmbeddingReport = {
   cached: number;
   embedded: number;
   ms: number;
-  /** Tokens per embedder input, before the model truncates it. */
-  tokens: { citable: TokenSummary; map: TokenSummary };
   cacheBytes: number;
 };
 
@@ -159,7 +166,10 @@ export type BuildReport = {
   embedding: EmbeddingReport | null;
   counts: { notes: number; passages: number; mapPassages: number; mapLinks: number };
   passagesBySourceType: Record<SourceType, number>;
-  wordCount: { p10: number; p50: number; p90: number; max: number };
+  /** Words per passage against the chunker's word cap. */
+  words: SizeReport;
+  /** Tokens per embedder input, before the model would truncate it. A build fails rather than report a passage over the limit. */
+  tokens: SizeReport;
   bookSections: { noteId: NoteId; section: string | null; sourceType: SourceType; page: number | null; words: number }[];
   /** Compiled books whose table-of-contents titles were not all found as headings in the body. */
   unmatchedTocTitles: { noteId: NoteId; count: number }[];

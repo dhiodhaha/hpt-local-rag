@@ -8,7 +8,7 @@ This is an independent personal project. It is not affiliated with, endorsed by,
 
 ## What this repo holds
 
-- `apps/server`: the vault builder and the keyword search index. `pnpm hpt build` builds `data/hpt.sqlite` from the vault, `pnpm hpt search "<question>"` searches it, and `pnpm hpt eval retrieval` scores it against the eval set.
+- `apps/server`: the vault builder and the keyword search index. `pnpm hpt build` builds `data/hpt.sqlite` from the vault, `pnpm hpt search "<question>"` searches it, `pnpm hpt eval retrieval` scores it against the eval set, `pnpm hpt eval compare` pairs two runs, and `pnpm hpt eval evidence` checks the evidence floors.
 - `docs/build-plan.md`: the phases and the decisions log.
 - `docs/system-prompt-v2.md`: the answer format the app expects from the model.
 - `docs/red-team-levels.md`: the security tests for the prompt.

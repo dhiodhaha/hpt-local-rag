@@ -208,7 +208,7 @@ async function search(db: Db, info: IndexInfo, embedder: () => Promise<Embedder>
   return {
     hits,
     leads: leadsFrom(lists, map.info),
-    evidence: judgeEvidence({ fused, topCoverage, channels: lists.map((list) => list.channel) }),
+    evidence: judgeEvidence({ fused, topCoverage, channels: lists.map((list) => list.channel), nearestCosine: lists.find((list) => list.channel === "vector")?.nearestCosine ?? null }),
     channels,
     ms: { ...ms, total: performance.now() - started },
   };
