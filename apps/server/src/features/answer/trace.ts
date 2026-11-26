@@ -95,6 +95,42 @@ export function jsonlTraceSink(dir: string): TraceSink {
   };
 }
 
+/**
+ * Deleting a conversation also scrubs its trace lines: the conversation id goes, and so do the search queries, which are
+ * question-derived. Timings, outcomes and cited passage ids stay, so the numbers still add up. A line that does not parse
+ * is kept as it is. Each changed file is rewritten through a temporary file and a rename.
+ */
+export function scrubConversation(dir: string, conversation: string): number {
+  if (!fs.existsSync(dir)) return 0;
+  let scrubbed = 0;
+  for (const name of fs.readdirSync(dir).filter((file) => file.endsWith(".jsonl"))) {
+    const file = path.join(dir, name);
+    let changed = false;
+    const lines = fs.readFileSync(file, "utf8").split("\n").map((line) => {
+      const trace = parseTrace(line);
+      if (trace === null || trace.conversation !== conversation) return line;
+      changed = true;
+      scrubbed += 1;
+      const tools = trace.tools.map((call) => (call.tool === "search" ? { ...call, arg: "" } : call));
+      return JSON.stringify({ ...trace, conversation: null, tools });
+    });
+    if (!changed) continue;
+    const temporary = `${file}.scrub`;
+    fs.writeFileSync(temporary, lines.join("\n"));
+    fs.renameSync(temporary, file);
+  }
+  return scrubbed;
+}
+
+function parseTrace(line: string): Trace | null {
+  if (line.trim() === "") return null;
+  try {
+    return JSON.parse(line) as Trace;
+  } catch {
+    return null;
+  }
+}
+
 export function memoryTraceSink(): TraceSink & { readonly traces: readonly Trace[] } {
   const traces: Trace[] = [];
   return { traces, write: (trace) => void traces.push(trace) };

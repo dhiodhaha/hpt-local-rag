@@ -19,7 +19,7 @@ export type { PromptTemplate } from "./prompt.ts";
 
 export { loadCanary } from "./tripwire.ts";
 
-export { jsonlTraceSink, memoryTraceSink } from "./trace.ts";
+export { jsonlTraceSink, memoryTraceSink, scrubConversation } from "./trace.ts";
 export type { AttemptTrace, FindingTrace, Trace, TraceSink } from "./trace.ts";
 
 export { FINDING_CODES } from "./policy.ts";

@@ -6,6 +6,7 @@ import { isConversationId, type ConversationId } from "./conversation-id.ts";
 import type { AnswerEngine, AskOptions, Finished } from "./engine.ts";
 import { citedOf } from "./fold.ts";
 import { normalizeTitle, searchOf, summaryOf, type ConversationSummary, type SearchResult } from "./history.ts";
+import { scrubConversation } from "./trace.ts";
 import type { CompleteAnswer, HistoryEntry, Scope, Turn } from "./types.ts";
 
 /**
@@ -99,7 +100,12 @@ export function newId(): ConversationId {
   return `c-${stamp}-${crypto.randomBytes(2).toString("hex")}`;
 }
 
-export function openConversations(dir: string): Conversations {
+export type ConversationsOptions = {
+  /** When set, deleting a conversation also scrubs its lines in these traces (scrubConversation). */
+  readonly tracesDir?: string;
+};
+
+export function openConversations(dir: string, options: ConversationsOptions = {}): Conversations {
   const files = () => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith(".jsonl")).sort() : []);
 
   function conversation(id: ConversationId): Conversation {
@@ -162,6 +168,7 @@ export function openConversations(dir: string): Conversations {
       if (!isConversationId(id)) throw new Error(`"${id}" is not a conversation id.`);
       fs.rmSync(path.join(dir, `${id}.jsonl`), { force: true });
       fs.rmSync(metaFile(dir, id), { force: true });
+      if (options.tracesDir !== undefined) scrubConversation(options.tracesDir, id);
     },
   };
 }

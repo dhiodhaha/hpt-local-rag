@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -146,6 +147,33 @@ describe("the conversation files", () => {
     conversations.remove("c-20261120-090000-aaaa");
     assert.deepEqual(fs.readdirSync(dir), []);
     assert.deepEqual(conversations.summaries(), []);
+  });
+
+  it("scrubs the deleted conversation's trace lines: no conversation id, no search queries", () => {
+    const root = tempDir();
+    const dir = path.join(root, "conversations");
+    const traces = path.join(root, "traces");
+    seed(dir, "c-20261120-090000-aaaa", turn(1, "lama?", "2026-11-20T09:00:00Z"));
+    fs.mkdirSync(traces);
+    const line = (conversation: string, query: string) =>
+      JSON.stringify({ v: 1, id: crypto.randomUUID(), conversation, turn: 1, totalMs: 4200, cited: ["putusan/x#1"], tools: [
+        { n: 1, attempt: 1, tool: "search", arg: query, denied: false, ms: 30, added: ["putusan/x#2"] },
+        { n: 2, attempt: 1, tool: "get_passage", arg: "S3", denied: false, ms: 5, added: [] },
+      ] });
+    const file = path.join(traces, "2026-11-20.jsonl");
+    fs.writeFileSync(file, `${line("c-20261120-090000-aaaa", "kueri rahasia")}\n${line("c-20261120-090000-bbbb", "kueri lain")}\n{"cut\n`);
+    openConversations(dir, { tracesDir: traces }).remove("c-20261120-090000-aaaa");
+    const [scrubbed, other, cut] = fs.readFileSync(file, "utf8").split("\n");
+    assert.ok(!fs.readFileSync(file, "utf8").includes("kueri rahasia"));
+    assert.ok(!fs.readFileSync(file, "utf8").includes("c-20261120-090000-aaaa"));
+    const kept = JSON.parse(scrubbed ?? "");
+    assert.equal(kept.conversation, null);
+    assert.equal(kept.totalMs, 4200);
+    assert.deepEqual(kept.cited, ["putusan/x#1"]);
+    assert.deepEqual(kept.tools.map((call: { arg: string }) => call.arg), ["", "S3"]);
+    assert.equal(JSON.parse(other ?? "").tools[0].arg, "kueri lain");
+    assert.equal(cut, '{"cut');
+    assert.deepEqual(fs.readdirSync(traces), ["2026-11-20.jsonl"]);
   });
 
   it("skips a file with no readable turn and a truncated last line", () => {
