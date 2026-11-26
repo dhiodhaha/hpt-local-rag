@@ -29,7 +29,7 @@ function differenceRow(label: string, before: VariantReport, after: VariantRepor
 }
 
 function agreementLine(report: VariantReport): string {
-  const agreement = (results: readonly CaseResult[]) => fixed(mean(results.map((result) => result.channelAgreement ?? 0)));
+  const agreement = (results: readonly CaseResult[]) => fixed(mean(results.map((result) => result.signals.channelAgreement ?? 0)));
   const hits = report.results.filter(found);
   const misses = report.results.filter((result) => !found(result));
   return `Channel agreement on the top 5 hits of ${report.variant.name}: mean ${agreement(hits)} over ${hits.length} conversations with a hit at 10, ${agreement(misses)} over ${misses.length} without.`;
@@ -87,5 +87,29 @@ export function formatReport(report: RetrievalReport, options: { maxMisses: numb
     for (const miss of misses.slice(0, options.maxMisses)) lines.push(`- ${miss.id}, ${Object.keys(miss.ranks).length} expected, ${miss.evidence}`);
     if (misses.length > options.maxMisses) lines.push(`- and ${misses.length - options.maxMisses} more in the JSON run output`);
   }
+  return lines.join("\n");
+}
+
+/**
+ * Two runs over the same conversations, for a change that rebuilds the index. Differences are paired per
+ * conversation, so the star means "larger than the 95 percent noise floor of that pairing".
+ */
+export function formatComparison(before: RetrievalReport, after: RetrievalReport, names: { before: string; after: string }): string {
+  const lines: string[] = [];
+  const differences: string[] = [];
+  lines.push(...header([`Variant (${names.before} then ${names.after})`, ...METRIC_HEADER]));
+  for (const afterVariant of after.variants) {
+    const beforeVariant = before.variants.find((candidate) => candidate.variant.name === afterVariant.variant.name);
+    if (!beforeVariant) continue;
+    const ids = (report: VariantReport) => report.results.map((result) => result.id).join(",");
+    if (ids(beforeVariant) !== ids(afterVariant)) throw new Error(`the two runs scored different conversations for ${afterVariant.variant.name}`);
+    for (const [label, variant] of [[names.before, beforeVariant], [names.after, afterVariant]] as const) {
+      const [five, ten] = [variant.byCutoff[5] as CutoffSummary, variant.byCutoff[10] as CutoffSummary];
+      lines.push(row([`${afterVariant.variant.name}, ${label}`, fixed(five.recall), fixed(ten.recall), fixed(five.hit), fixed(ten.hit), fixed(variant.mrr)]));
+    }
+    differences.push(differenceRow(afterVariant.variant.name, beforeVariant, afterVariant));
+  }
+  lines.push("", `${names.after} minus ${names.before}, mean per-conversation difference ± the 95 percent noise floor. A star means it clears the floor.`, "");
+  lines.push(...header(["Variant", ...METRIC_HEADER]), ...differences);
   return lines.join("\n");
 }

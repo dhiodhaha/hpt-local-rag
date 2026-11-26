@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ChannelLists } from "../src/features/search/channels.ts";
-import { fuse, judgeEvidence, notesNeedingPassage, RANK_POLICY, type RankLookups } from "../src/features/search/rank.ts";
+import { fuse, judgeEvidence, levelOf, notesNeedingPassage, RANK_POLICY, type RankLookups } from "../src/features/search/rank.ts";
+import type { Evidence } from "../src/features/search/types.ts";
 
 type Citable = [rowid: number, noteRowid: number, hash?: string];
 
@@ -13,8 +14,8 @@ function lookups(citable: Citable[], map: RankLookups["map"] = new Map(), best: 
   };
 }
 
-const keyword = (citable: number[], map: number[] = []): ChannelLists => ({ channel: "keyword", citable, map });
-const vector = (citable: number[], map: number[] = []): ChannelLists => ({ channel: "vector", citable, map });
+const keyword = (citable: number[], map: number[] = []): ChannelLists => ({ channel: "keyword", citable, map, nearestCosine: null });
+const vector = (citable: number[], map: number[] = []): ChannelLists => ({ channel: "vector", citable, map, nearestCosine: null });
 const channels = ["keyword"] as const;
 
 test("a better keyword rank scores higher and every hit says why", () => {
@@ -72,18 +73,44 @@ test("the list is cut to the limit", () => {
   assert.equal(fuse([keyword([10, 20, 30])], lookups(rows), 2).length, 2);
 });
 
-test("evidence is absent without hits or with thin coverage, strong only for a direct, well covered top hit", () => {
-  const direct = fuse([keyword([10])], lookups([[10, 1]]), 10);
-  assert.equal(judgeEvidence({ fused: [], topCoverage: 0, channels }).level, "absent");
-  assert.equal(judgeEvidence({ fused: direct, topCoverage: 0.2, channels }).level, "absent");
-  assert.equal(judgeEvidence({ fused: direct, topCoverage: 0.5, channels }).level, "weak");
-  assert.equal(judgeEvidence({ fused: direct, topCoverage: 0.8, channels }).level, "strong");
+test("without hits the evidence is absent, and a linked top hit is never strong", () => {
+  assert.equal(judgeEvidence({ fused: [], topCoverage: 0, channels, nearestCosine: null }).level, "absent");
 
   const map = new Map([[500, { collection: "sources" as const, links: [2] }]]);
   const linked = fuse([keyword([], [500])], lookups([[20, 2]], map, [[2, 20]]), 10);
-  const verdict = judgeEvidence({ fused: linked, topCoverage: 0.9, channels });
+  const verdict = judgeEvidence({ fused: linked, topCoverage: 0.9, channels, nearestCosine: null });
   assert.equal(verdict.level, "weak");
   assert.equal(verdict.signals.topIsDirect, false);
+});
+
+const { floors, strongCoverage } = RANK_POLICY.evidence;
+const signals = (overrides: Partial<Evidence["signals"]> = {}): Evidence["signals"] => ({
+  topCoverage: strongCoverage + 0.1,
+  topIsDirect: true,
+  channelAgreement: floors.agreement + 0.2,
+  nearestCosine: floors.cosine + 0.02,
+  ...overrides,
+});
+const failing = { topCoverage: floors.coverage - 0.1, channelAgreement: floors.agreement - 0.2, nearestCosine: floors.cosine - 0.02 };
+
+test("with every signal measured, strong needs all of them, and absent needs most of them to fail", () => {
+  assert.equal(levelOf(signals()), "strong");
+  assert.equal(levelOf(signals({ topIsDirect: false })), "weak");
+  assert.equal(levelOf(signals({ topCoverage: floors.coverage })), "weak");
+  assert.equal(levelOf(signals({ channelAgreement: failing.channelAgreement })), "weak");
+  assert.equal(levelOf(signals({ topCoverage: failing.topCoverage, channelAgreement: failing.channelAgreement })), "absent");
+  assert.equal(levelOf(signals(failing)), "absent");
+});
+
+test("a hit the vector channel found with few shared terms is not absent", () => {
+  assert.equal(levelOf(signals({ topCoverage: failing.topCoverage })), "weak");
+});
+
+test("a keyword-only search measures coverage alone, so coverage alone decides", () => {
+  const alone = (topCoverage: number) => signals({ topCoverage, channelAgreement: null, nearestCosine: null });
+  assert.equal(levelOf(alone(failing.topCoverage)), "absent");
+  assert.equal(levelOf(alone(floors.coverage)), "weak");
+  assert.equal(levelOf(alone(strongCoverage)), "strong");
 });
 
 const both = ["keyword", "vector"] as const;
@@ -99,9 +126,9 @@ test("channel agreement is the share of the top hits that every channel found di
   const rows: Citable[] = [[10, 1], [20, 2], [30, 3], [40, 4]];
   const fused = fuse([keyword([10, 20, 30]), vector([20, 30, 40])], lookups(rows), 10);
   assert.deepEqual(fused.map((hit) => hit.passageRowid), [20, 30, 10, 40]);
-  assert.equal(judgeEvidence({ fused, topCoverage: 0.8, channels: both }).signals.channelAgreement, 0.5);
-  assert.equal(judgeEvidence({ fused, topCoverage: 0.8, channels }).signals.channelAgreement, null);
-  assert.equal(judgeEvidence({ fused: [], topCoverage: 0, channels: both }).signals.channelAgreement, null);
+  assert.equal(judgeEvidence({ fused, topCoverage: 0.8, channels: both, nearestCosine: 0.9 }).signals.channelAgreement, 0.5);
+  assert.equal(judgeEvidence({ fused, topCoverage: 0.8, channels, nearestCosine: null }).signals.channelAgreement, null);
+  assert.equal(judgeEvidence({ fused: [], topCoverage: 0, channels: both, nearestCosine: null }).signals.channelAgreement, null);
 });
 
 test("a concept hit in the vector channel expands to its putusan like a keyword one", () => {

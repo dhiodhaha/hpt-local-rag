@@ -79,8 +79,10 @@ export type Evidence = {
     /** Share of the question's content terms found in the top hit's title and text, 0..1. */
     topCoverage: number;
     topIsDirect: boolean;
-    /** Share of the top 5 hits found directly by every searched channel, 0..1. Null when only one channel ran. Not yet part of the level. */
+    /** Share of the top 5 hits found directly by every searched channel, 0..1. Null when only one channel ran. */
     channelAgreement: number | null;
+    /** Cosine between the question and its nearest citable passage. Null without the vector channel. */
+    nearestCosine: number | null;
   };
 };
 

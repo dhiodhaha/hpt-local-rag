@@ -1,8 +1,10 @@
 import type { ChannelLists } from "./channels.ts";
-import type { Channel, Evidence, MapCollection } from "./types.ts";
+import type { Channel, Evidence, EvidenceLevel, MapCollection } from "./types.ts";
 
 /**
  * Every ranking number, changed only from `hpt eval retrieval` output.
+ * `evidence.floors` come from `hpt eval evidence`: the grid point that best separates conversations with a retrieved
+ * reference from those without, validated leave-one-out. `strongCoverage` is a judgement and was not fitted.
  */
 export const RANK_POLICY = {
   rrfK: 60,
@@ -10,7 +12,7 @@ export const RANK_POLICY = {
   expandTopMap: 20,
   expandLinksPerPassage: 5,
   maxPerNote: 2,
-  evidence: { strongCoverage: 0.6, absentCoverage: 0.34, agreementTop: 5 },
+  evidence: { strongCoverage: 0.6, agreementTop: 5, floors: { coverage: 0.5, agreement: 0.4, cosine: 0.85 } },
 } as const;
 
 export type RankLookups = {
@@ -117,7 +119,6 @@ export function fuse(lists: readonly ChannelLists[], lookups: RankLookups, limit
   return fused.slice(0, limit);
 }
 
-/** A signal only: it is reported with the level and does not change it until the eval calibrates a threshold. */
 function channelAgreement(fused: readonly Fused[], channels: readonly Channel[]): number | null {
   const top = fused.slice(0, RANK_POLICY.evidence.agreementTop);
   if (channels.length < 2 || top.length === 0) return null;
@@ -125,16 +126,31 @@ function channelAgreement(fused: readonly Fused[], channels: readonly Channel[])
   return top.filter((hit) => channels.every((channel) => found(hit, channel))).length / top.length;
 }
 
+export type EvidenceFloors = { coverage: number; agreement: number; cosine: number };
+
 /**
- * absent: no hits, or the top hit covers too few of the question's content terms.
- * strong: the top hit is a direct match and covers most of them.
+ * Each signal that was measured either clears its floor or fails it.
+ * absent: more than half of the measured signals fail. One weak signal alone does not condemn a hit, because the
+ *   keyword and vector channels find different right answers.
+ * strong: the top hit is a direct match, covers most of the question's terms, and no measured signal fails.
  * weak: everything else.
+ * A keyword-only search measures coverage alone, so coverage alone decides there.
  */
-export function judgeEvidence(input: { fused: readonly Fused[]; topCoverage: number; channels: readonly Channel[] }): Evidence {
+export function levelOf(signals: Evidence["signals"], floors: EvidenceFloors = RANK_POLICY.evidence.floors): EvidenceLevel {
+  const measured = [
+    [signals.topCoverage, floors.coverage],
+    [signals.channelAgreement, floors.agreement],
+    [signals.nearestCosine, floors.cosine],
+  ].filter((pair): pair is [number, number] => pair[0] !== null);
+  const failed = measured.filter(([value, floor]) => value < floor).length;
+  if (failed * 2 > measured.length) return "absent";
+  if (signals.topIsDirect && signals.topCoverage >= RANK_POLICY.evidence.strongCoverage && failed === 0) return "strong";
+  return "weak";
+}
+
+export function judgeEvidence(input: { fused: readonly Fused[]; topCoverage: number; channels: readonly Channel[]; nearestCosine: number | null }): Evidence {
   const top = input.fused[0];
   const topIsDirect = top?.reasons.some((reason) => reason.kind === "direct") ?? false;
-  const signals = { topCoverage: input.topCoverage, topIsDirect, channelAgreement: channelAgreement(input.fused, input.channels) };
-  if (!top || input.topCoverage < RANK_POLICY.evidence.absentCoverage) return { level: "absent", signals };
-  if (topIsDirect && input.topCoverage >= RANK_POLICY.evidence.strongCoverage) return { level: "strong", signals };
-  return { level: "weak", signals };
+  const signals = { topCoverage: input.topCoverage, topIsDirect, channelAgreement: channelAgreement(input.fused, input.channels), nearestCosine: input.nearestCosine };
+  return { level: top ? levelOf(signals) : "absent", signals };
 }

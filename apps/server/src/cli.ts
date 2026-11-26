@@ -1,14 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { formatReport, runRetrievalEval } from "./features/eval/index.ts";
+import { calibrate, formatCalibration, formatComparison, formatReport, labelled, runRetrievalEval, type RetrievalReport } from "./features/eval/index.ts";
 import { buildIndex, loadEmbedder, openIndex, statusOf, type BuildReport, type Channel, type SearchResult } from "./features/search/index.ts";
 import { config } from "./shared/config.ts";
 
 const USAGE = `Usage:
   hpt build [--vault <dir>] [--out <file>] [--keyword-only]
   hpt search "<question>" [--limit 10] [--note <note id>] [--channels keyword,vector] [--json]
-  hpt eval retrieval [--out <dir>] [--misses 30]`;
+  hpt eval retrieval [--out <dir>] [--misses 30]
+  hpt eval compare <before run.json> <after run.json>
+  hpt eval evidence <run.json>`;
 
 function printBuild(report: BuildReport, outFile: string): void {
   const mb = (report.bytes / 1_048_576).toFixed(1);
@@ -123,6 +125,23 @@ async function main(argv: string[]): Promise<number> {
     } finally {
       index.close();
     }
+    return 0;
+  }
+  if (command === "eval" && rest[0] === "compare") {
+    const [beforeFile, afterFile] = rest.slice(1);
+    if (beforeFile === undefined || afterFile === undefined) return fail(USAGE);
+    const read = (file: string) => JSON.parse(fs.readFileSync(file, "utf8")) as RetrievalReport;
+    const [before, after] = [read(beforeFile), read(afterFile)];
+    console.log(formatComparison(before, after, { before: before.indexFingerprint.slice(0, 8), after: after.indexFingerprint.slice(0, 8) }));
+    return 0;
+  }
+  if (command === "eval" && rest[0] === "evidence") {
+    const file = rest[1];
+    if (file === undefined) return fail(USAGE);
+    const report = JSON.parse(fs.readFileSync(file, "utf8")) as RetrievalReport;
+    const hybrid = report.variants.find((variant) => variant.variant.name === "hybrid");
+    if (!hybrid) return fail("this run has no hybrid variant to calibrate");
+    console.log(formatCalibration(calibrate(labelled(hybrid))));
     return 0;
   }
   return fail(USAGE);

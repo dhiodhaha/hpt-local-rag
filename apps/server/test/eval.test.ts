@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { before, describe, test } from "node:test";
-import { formatReport, runRetrievalEval } from "../src/features/eval/index.ts";
+import { formatComparison, formatReport, runRetrievalEval, type RetrievalReport, type VariantReport } from "../src/features/eval/index.ts";
 import { ceilingAt, hitAt, pairedDifference, rankExpected, recallAt, reciprocalRank, summarizeCases } from "../src/features/eval/metrics.ts";
 import { loadCases } from "../src/features/eval/retrieval.ts";
 import { buildIndex, openIndex } from "../src/features/search/index.ts";
@@ -122,5 +122,45 @@ describe("comparing channels", () => {
     const keyword = formatReport(await evaluate("keyword.sqlite"), { maxMisses: 10 });
     assert.match(keyword, /- synonym-only, 1 expected/);
     assert.doesNotMatch(hybrid + keyword, /humus|nelayan/);
+  });
+});
+
+function runWith(ranks: Record<string, Record<string, number | null>>): RetrievalReport {
+  const results = Object.entries(ranks).map(([id, found]) => ({
+    id,
+    ranks: found,
+    evidence: "weak" as const,
+    signals: { topCoverage: 0.5, topIsDirect: true, channelAgreement: null, nearestCosine: null },
+    ms: 1,
+    embedMs: 0,
+  }));
+  const summary = summarizeCases(results);
+  const variant: VariantReport = {
+    variant: { name: "hybrid", channels: ["keyword", "vector"], linkExpansion: true },
+    byCutoff: summary.byCutoff,
+    mrr: summary.mrr,
+    evidence: { hit: { strong: 0, weak: 0, absent: 0 }, miss: { strong: 0, weak: 0, absent: 0 }, unreferenced: { strong: 0, weak: 0, absent: 0 } },
+    ms: { total: { p50: 1, p95: 1 }, embed: null },
+    results,
+    unreferenced: [],
+  };
+  return { indexFingerprint: "x", channels: ["keyword", "vector"], cases: results.length, skipped: { badRows: 0, fullyUnmapped: 0, nonCitableReferences: 0 }, variants: [variant] };
+}
+
+describe("comparing two runs", () => {
+  const cases = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  const before = runWith(Object.fromEntries(cases.map((id, index) => [id, { "putusan/x": index < 2 ? 1 : null }])));
+  const after = runWith(Object.fromEntries(cases.map((id) => [id, { "putusan/x": 1 }])));
+
+  test("each conversation is paired, and a gain larger than the spread is starred", () => {
+    const text = formatComparison(before, after, { before: "old", after: "new" });
+    assert.match(text, /\| hybrid, old \| 0\.250 \| 0\.250 \| 0\.250 \| 0\.250 \| 0\.250 \|/);
+    assert.match(text, /\| hybrid, new \| 1\.000 \| 1\.000 \| 1\.000 \| 1\.000 \| 1\.000 \|/);
+    assert.match(text, /\| hybrid \| \+0\.750 ± 0\.\d{3} \* \|/);
+  });
+
+  test("runs over different conversations are refused", () => {
+    const other = runWith({ z: { "putusan/x": 1 } });
+    assert.throws(() => formatComparison(before, other, { before: "old", after: "new" }), /different conversations/);
   });
 });

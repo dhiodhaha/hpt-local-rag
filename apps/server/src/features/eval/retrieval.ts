@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import type { NoteId } from "../corpus/index.ts";
-import { noteIdOf, type Channel, type EvidenceLevel, type HptIndex } from "../search/index.ts";
+import { noteIdOf, type Channel, type Evidence, type EvidenceLevel, type HptIndex } from "../search/index.ts";
 import { percentile, rankExpected, summarizeCases, type CutoffSummary, type ExpectedRanks } from "./metrics.ts";
 
 export type QaCase = { id: string; question: string; expected: NoteId[] };
@@ -59,10 +59,13 @@ export type CaseResult = {
   id: string;
   ranks: ExpectedRanks;
   evidence: EvidenceLevel;
-  channelAgreement: number | null;
+  signals: Evidence["signals"];
   ms: number;
   embedMs: number;
 };
+
+/** A conversation with no reference: only its evidence level and signals are known. */
+export type UnreferencedResult = { id: string; evidence: EvidenceLevel; signals: Evidence["signals"] };
 
 export type EvidenceSplit = Record<EvidenceLevel, number>;
 
@@ -77,6 +80,7 @@ export type VariantReport = {
   evidence: { hit: EvidenceSplit; miss: EvidenceSplit; unreferenced: EvidenceSplit };
   ms: { total: Spread; embed: Spread | null };
   results: CaseResult[];
+  unreferenced: UnreferencedResult[];
 };
 
 export type RetrievalReport = {
@@ -117,13 +121,18 @@ async function runVariant(index: HptIndex, loaded: LoadedCases, variant: Variant
       id: qaCase.id,
       ranks: rankExpected(qaCase.expected, hitNotes),
       evidence: result.evidence.level,
-      channelAgreement: result.evidence.signals.channelAgreement,
+      signals: result.evidence.signals,
       ms: result.ms.total,
       embedMs: result.ms.embed,
     });
   }
-  const unreferenced = emptySplit();
-  for (const row of loaded.unreferenced) unreferenced[(await search(row.question)).evidence.level] += 1;
+  const unreferenced: UnreferencedResult[] = [];
+  for (const row of loaded.unreferenced) {
+    const { evidence } = await search(row.question);
+    unreferenced.push({ id: row.id, evidence: evidence.level, signals: evidence.signals });
+  }
+  const unreferencedSplit = emptySplit();
+  for (const result of unreferenced) unreferencedSplit[result.evidence] += 1;
 
   const split = (isHit: boolean) => {
     const counts = emptySplit();
@@ -138,12 +147,13 @@ async function runVariant(index: HptIndex, loaded: LoadedCases, variant: Variant
     variant,
     byCutoff: summary.byCutoff,
     mrr: summary.mrr,
-    evidence: { hit: split(true), miss: split(false), unreferenced },
+    evidence: { hit: split(true), miss: split(false), unreferenced: unreferencedSplit },
     ms: {
       total: spreadOf(results.map((result) => result.ms)),
       embed: variant.channels.includes("vector") ? spreadOf(results.map((result) => result.embedMs)) : null,
     },
     results,
+    unreferenced,
   };
 }
 
