@@ -8,7 +8,7 @@ export const ASK_USAGE = `Usage:
   hpt ask "<question>" [-c | --conversation <id>] [--note <note id>] [--model sonnet|opus|haiku|<id>]
                        [--effort low|medium|high] [--max-extra-calls <n>] [--json]`;
 
-const MODELS: Readonly<Record<string, string>> = { sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", haiku: "claude-haiku-5-5" };
+export const MODELS: Readonly<Record<string, string>> = { sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", haiku: "claude-haiku-5-5" };
 
 export function parseScope(note: string | undefined): Scope | null {
   if (note === undefined) return null;
