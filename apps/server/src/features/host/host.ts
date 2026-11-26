@@ -1,7 +1,7 @@
-import type { AnswerEngine, AnswerEvent, Conversations } from "../answer/index.ts";
+import { openedOf, type AnswerEngine, type AnswerEvent, type Conversations } from "../answer/index.ts";
 import { CLAUDE_MODELS, type Connection, type Effort } from "../providers/index.ts";
 import type { HptIndex } from "../search/index.ts";
-import { PROTOCOL_VERSION, type AskParams, type CallId, type FromHost, type HostError, type HostStatus, type ModelOption } from "./client.ts";
+import { PROTOCOL_VERSION, type AskParams, type CallId, type FromHost, type HostError, type HostStatus, type MethodName, type Methods, type ModelOption, type UnaryMethod } from "./client.ts";
 import { ToHostSchema } from "./schema.ts";
 
 /**
@@ -15,6 +15,9 @@ import { ToHostSchema } from "./schema.ts";
  *                its composer on `finished` can never race the history the next ask reads
  *   cancel       one AbortController per call, aborted by `cancel`, by `close`, or by the parent going away
  *   guarantee    per call id: events, then exactly one result or error. A call id is never reused
+ *
+ * Riwayat (list, open, search, rename, remove) is answered from the conversation files, one request and one result. `remove`
+ * refuses a conversation that is answering a question, because its turn would be written back after the delete.
  */
 export type Backend = {
   readonly engine: AnswerEngine;
@@ -101,6 +104,48 @@ export function createHost(deps: HostDeps): Host {
     send({ kind: "result", id, result: { conversation: conversation.id, turn, askId: finished.id } });
   }
 
+  type Call<M extends UnaryMethod> = { readonly id: CallId; readonly method: M; readonly params: Methods[M]["params"] };
+  type Handler<M extends UnaryMethod> = (params: Methods[M]["params"], ready: Backend) => Methods[M]["result"] | HostError;
+
+  const handlers: { readonly [M in UnaryMethod]: Handler<M> } = {
+    list: (_params, ready) => ({ conversations: ready.conversations.summaries() }),
+    open(params, ready) {
+      const conversation = ready.conversations.open(params.conversation);
+      const summary = conversation.summary();
+      if (summary === null) return { code: "not_found", message: "the conversation does not exist" };
+      const ids = [...new Set(conversation.turns.flatMap((turn) => turn.context))];
+      return openedOf(summary, conversation.turns, ready.index.getPassages(ids));
+    },
+    search: (params, ready) => ready.conversations.search(params.query),
+    rename(params, ready) {
+      const summary = ready.conversations.rename(params.conversation, params.title);
+      return summary === null ? { code: "not_found", message: "the conversation does not exist" } : { conversation: summary };
+    },
+    remove(params, ready) {
+      if (tails.has(params.conversation)) return { code: "bad_request", message: "the conversation is answering a question" };
+      ready.conversations.remove(params.conversation);
+      return { conversation: params.conversation };
+    },
+  };
+
+  function unary<M extends UnaryMethod>(request: Call<M>, send: (frame: FromHost) => void): void {
+    const { id, method, params } = request;
+    const fail = (error: HostError) => send({ kind: "error", id, error });
+    if (closed) return fail({ code: "host_down", message: "the host is closing" });
+    if (seen.has(id)) return fail({ code: "bad_request", message: "call id already used" });
+    seen.add(id);
+    if ("unavailable" in backend) return fail({ code: "index_unavailable", message: backend.unavailable });
+    try {
+      const handler = handlers[method] as Handler<M>;
+      const result = handler(params, backend);
+      if ("code" in result && "message" in result) fail(result as HostError);
+      else send({ kind: "result", id, result: result as Methods[MethodName]["result"] });
+    } catch (cause: unknown) {
+      log(`${method} ${id} failed: ${cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)}`);
+      fail({ code: "internal", message: "the history could not be read" });
+    }
+  }
+
   function ask(id: CallId, params: AskParams, send: (frame: FromHost) => void): void {
     const fail = (error: HostError) => send({ kind: "error", id, error });
     if (closed) return fail({ code: "host_down", message: "the host is closing" });
@@ -160,7 +205,8 @@ export function createHost(deps: HostDeps): Host {
         controllers.get(request.id)?.abort();
         return;
       }
-      ask(request.id, request.params, send);
+      if (request.method === "ask") ask(request.id, request.params, send);
+      else unary(request as Call<UnaryMethod>, send);
     },
     close() {
       closed = true;

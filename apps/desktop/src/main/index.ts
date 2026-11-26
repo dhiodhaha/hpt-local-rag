@@ -16,6 +16,8 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
 const GROUND = "#f2f3f6";
 
 async function main(): Promise<void> {
+  const userData = process.env.HPT_USER_DATA;
+  if (userData !== undefined && userData !== "") app.setPath("userData", userData);
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;

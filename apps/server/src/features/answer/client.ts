@@ -13,6 +13,8 @@ export { EXCEPTION_WITHHELD, FAILURE_COPY, RESTART, RESTART_WHY, WITHHELD, fallb
 export { isConversationId } from "./conversation-id.ts";
 export type { ConversationId } from "./conversation-id.ts";
 
+export type { ConversationHit, ConversationSummary, OpenedConversation, OpenedTurn, SearchResult, Snippet } from "./history.ts";
+
 export type { Route } from "./routes.ts";
 export type {
   Answer,

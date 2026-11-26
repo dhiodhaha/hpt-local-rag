@@ -10,6 +10,8 @@ export type { AnswerEngine, AskOptions, EngineDeps, EngineSettings, Finished } f
 export { openConversations, historyOf } from "./conversation.ts";
 export type { Conversation, Conversations, StoredTurn } from "./conversation.ts";
 
+export { openedOf } from "./history.ts";
+
 export * from "./client.ts";
 
 export { loadPromptTemplate } from "./prompt.ts";

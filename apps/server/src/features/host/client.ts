@@ -1,4 +1,4 @@
-import { FAILURE_COPY, type AnswerEvent, type ConversationId, type Outcome, type Scope } from "../answer/client.ts";
+import { FAILURE_COPY, type AnswerEvent, type ConversationId, type ConversationSummary, type OpenedConversation, type Outcome, type Scope, type SearchResult } from "../answer/client.ts";
 import type { Connection, Effort, FailureCode } from "../providers/index.ts";
 
 /**
@@ -52,17 +52,24 @@ export type HostStatus = {
   readonly models: readonly ModelOption[];
 };
 
-export type HostErrorCode = "bad_request" | "index_unavailable" | "host_down" | "cancelled" | "internal";
+export type HostErrorCode = "bad_request" | "not_found" | "index_unavailable" | "host_down" | "cancelled" | "internal";
 export type HostError = { readonly code: HostErrorCode; readonly message: string };
 
 /**
- * One entry per method: its params, what streams before the result, and the result. Reserved and added by the change that
- * needs them: `passages` for the reader and `conversations` for Riwayat.
+ * One entry per method: its params, what streams before the result, and the result. `ask` streams. The Riwayat methods answer
+ * once, so their `event` is `never`. Reserved for the reader: `passages`.
  */
 export type Methods = {
   ask: { params: AskParams; event: AnswerEvent; result: AskResult };
+  list: { params: null; event: never; result: { readonly conversations: readonly ConversationSummary[] } };
+  open: { params: { readonly conversation: ConversationId }; event: never; result: OpenedConversation };
+  search: { params: { readonly query: string }; event: never; result: SearchResult };
+  rename: { params: { readonly conversation: ConversationId; readonly title: string }; event: never; result: { readonly conversation: ConversationSummary } };
+  remove: { params: { readonly conversation: ConversationId }; event: never; result: { readonly conversation: ConversationId } };
 };
 export type MethodName = keyof Methods;
+/** Every method but `ask`: one request, one result or error, no events. */
+export type UnaryMethod = Exclude<MethodName, "ask">;
 
 /** Chosen by the caller, unique per call. The host and the process between treat it as an opaque string. */
 export type CallId = string;
@@ -113,11 +120,14 @@ export type HptClient = {
    * second path for "the stream just stopped".
    */
   ask(params: AskParams, onEvent: (event: AnswerEvent) => void): AskCall;
+  /** Riwayat and its kin. Waits for `ready`, rejects with a HostError (also when the host is down). */
+  request<M extends UnaryMethod>(method: M, params: Methods[M]["params"]): Promise<Methods[M]["result"]>;
 };
 
 /** Fixed Indonesian copy for host-level failures. Copy that comes from the engine stays in answer/copy.ts. */
 export const HOST_ERROR_COPY: Readonly<Record<HostErrorCode, string>> = {
   bad_request: FAILURE_COPY.unknown,
+  not_found: "Percakapan ini sudah tidak ada.",
   index_unavailable: "Indeks naskah belum tersedia. Bangun indeks dengan `pnpm hpt build`, lalu mulai ulang aplikasi.",
   host_down: FAILURE_COPY.crashed,
   cancelled: FAILURE_COPY.aborted,
@@ -126,6 +136,7 @@ export const HOST_ERROR_COPY: Readonly<Record<HostErrorCode, string>> = {
 
 const HOST_FAILURE_CODE: Readonly<Record<Exclude<HostErrorCode, "cancelled">, FailureCode>> = {
   bad_request: "unknown",
+  not_found: "unknown",
   index_unavailable: "unknown",
   host_down: "crashed",
   internal: "unknown",
@@ -138,9 +149,11 @@ const finishedFor = (error: HostError): AnswerEvent => {
 };
 
 type OpenCall = {
-  readonly params: AskParams;
-  readonly onEvent: (event: AnswerEvent) => void;
-  readonly resolve: (result: AskResult) => void;
+  readonly method: MethodName;
+  readonly params: Methods[MethodName]["params"];
+  /** Set for `ask` only: a call without it has no events, so no `finished` is made for it. */
+  readonly onEvent: ((event: AnswerEvent) => void) | null;
+  readonly resolve: (result: Methods[MethodName]["result"]) => void;
   readonly reject: (error: HostError) => void;
   sent: boolean;
   sawFinished: boolean;
@@ -158,7 +171,7 @@ export function createClient(pipe: Pipe, newId: () => CallId = () => crypto.rand
 
   function end(id: CallId, call: OpenCall, error: HostError): void {
     open.delete(id);
-    if (!call.sawFinished) {
+    if (call.onEvent !== null && !call.sawFinished) {
       call.sawFinished = true;
       call.onEvent(finishedFor(error));
     }
@@ -167,7 +180,7 @@ export function createClient(pipe: Pipe, newId: () => CallId = () => crypto.rand
 
   function dispatch(id: CallId, call: OpenCall): void {
     call.sent = true;
-    pipe.send({ kind: "call", id, method: "ask", params: call.params });
+    pipe.send({ kind: "call", id, method: call.method, params: call.params } as ToHost);
   }
 
   pipe.subscribe((frame) => {
@@ -187,7 +200,7 @@ export function createClient(pipe: Pipe, newId: () => CallId = () => crypto.rand
         return;
       case "event": {
         const call = open.get(frame.id);
-        if (call === undefined || call.sawFinished) return;
+        if (call === undefined || call.onEvent === null || call.sawFinished) return;
         if (frame.event.kind === "finished") call.sawFinished = true;
         call.onEvent(frame.event);
         return;
@@ -196,7 +209,7 @@ export function createClient(pipe: Pipe, newId: () => CallId = () => crypto.rand
         const call = open.get(frame.id);
         if (call === undefined) return;
         open.delete(frame.id);
-        if (!call.sawFinished) call.onEvent(finishedFor({ code: "internal", message: "no finished event" }));
+        if (call.onEvent !== null && !call.sawFinished) call.onEvent(finishedFor({ code: "internal", message: "no finished event" }));
         call.resolve(frame.result);
         return;
       }
@@ -215,10 +228,21 @@ export function createClient(pipe: Pipe, newId: () => CallId = () => crypto.rand
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    request<M extends UnaryMethod>(method: M, params: Methods[M]["params"]): Promise<Methods[M]["result"]> {
+      const id = newId();
+      const done = new Promise<Methods[M]["result"]>((resolve, reject) => {
+        open.set(id, { method, params, onEvent: null, resolve: resolve as OpenCall["resolve"], reject, sent: false, sawFinished: false });
+      });
+      const call = open.get(id);
+      if (call === undefined) throw new Error("the call was not registered");
+      if (state.kind === "ready") dispatch(id, call);
+      else if (state.kind === "down") end(id, call, { code: "host_down", message: state.reason });
+      return done;
+    },
     ask(params, onEvent) {
       const id = newId();
       const done = new Promise<AskResult>((resolve, reject) => {
-        open.set(id, { params, onEvent, resolve, reject, sent: false, sawFinished: false });
+        open.set(id, { method: "ask", params, onEvent, resolve: resolve as OpenCall["resolve"], reject, sent: false, sawFinished: false });
       });
       done.catch(() => {});
       const call = open.get(id);

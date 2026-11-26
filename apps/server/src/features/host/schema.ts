@@ -23,8 +23,17 @@ export const AskParamsSchema: z.ZodType<AskParams> = z.object({
   choice: z.object({ provider: z.literal("claude"), model: z.string().min(1) }).nullable(),
 });
 
+const MAX_QUERY_CHARS = 200;
+const MAX_TITLE_CHARS = 400;
+const callId = z.string().min(1);
+
 export const ToHostSchema: z.ZodType<ToHost> = z.union([
   z.object({ kind: z.literal("hello") }),
-  z.object({ kind: z.literal("call"), id: z.string().min(1), method: z.literal("ask"), params: AskParamsSchema }),
-  z.object({ kind: z.literal("cancel"), id: z.string().min(1) }),
+  z.object({ kind: z.literal("call"), id: callId, method: z.literal("ask"), params: AskParamsSchema }),
+  z.object({ kind: z.literal("call"), id: callId, method: z.literal("list"), params: z.null() }),
+  z.object({ kind: z.literal("call"), id: callId, method: z.literal("open"), params: z.object({ conversation: conversationId }) }),
+  z.object({ kind: z.literal("call"), id: callId, method: z.literal("search"), params: z.object({ query: z.string().max(MAX_QUERY_CHARS) }) }),
+  z.object({ kind: z.literal("call"), id: callId, method: z.literal("rename"), params: z.object({ conversation: conversationId, title: z.string().max(MAX_TITLE_CHARS) }) }),
+  z.object({ kind: z.literal("call"), id: callId, method: z.literal("remove"), params: z.object({ conversation: conversationId }) }),
+  z.object({ kind: z.literal("cancel"), id: callId }),
 ]);
