@@ -1,0 +1,206 @@
+{
+  "hash": "749d7270636dfdb38468fd03a8f2b193d87b1951f9b3b0a3dec01fe062646bd0",
+  "lockedAt": "2026-11-26",
+  "items": [
+    {
+      "id": "q-0da629e2-1",
+      "category": "inferred",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-23063c71-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-2785327c-1",
+      "category": "inferred",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-27cd3e8e-1",
+      "category": "differing",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-2d0abae2-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-352cee82-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-41db3655-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-4a46d07d-1",
+      "category": "inferred",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-59f2c21c-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-627bb17f-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-66e9ef91-1",
+      "category": "inferred",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-73cc340c-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-76a63c5d-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-79ae3faf-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-87a052dc-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-882e57e6-1",
+      "category": "differing",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-91d9ed9e-1",
+      "category": "inferred",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-9839df0a-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-9a4098ab-1",
+      "category": "differing",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-a5812f22-1",
+      "category": "differing",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-b091d09d-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-b769fdc1-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-c2d8b06e-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-c38380d9-1",
+      "category": "inferred",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-d4d5fc52-1",
+      "category": "inferred",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-ef762cbd-1",
+      "category": "explicit",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-f46139ae-1",
+      "category": "differing",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "q-f848e935-1",
+      "category": "inferred",
+      "origin": "qa_pairs"
+    },
+    {
+      "id": "w-01",
+      "category": "revision",
+      "origin": "written"
+    },
+    {
+      "id": "w-02",
+      "category": "revision",
+      "origin": "written"
+    },
+    {
+      "id": "w-03",
+      "category": "revision",
+      "origin": "written"
+    },
+    {
+      "id": "w-04",
+      "category": "revision",
+      "origin": "written"
+    },
+    {
+      "id": "w-05",
+      "category": "insufficient",
+      "origin": "written"
+    },
+    {
+      "id": "w-06",
+      "category": "insufficient",
+      "origin": "written"
+    },
+    {
+      "id": "w-07",
+      "category": "insufficient",
+      "origin": "written"
+    },
+    {
+      "id": "w-08",
+      "category": "insufficient",
+      "origin": "written"
+    },
+    {
+      "id": "w-09",
+      "category": "fictional",
+      "origin": "written"
+    },
+    {
+      "id": "w-10",
+      "category": "fictional",
+      "origin": "written"
+    },
+    {
+      "id": "w-11",
+      "category": "fictional",
+      "origin": "written"
+    },
+    {
+      "id": "w-12",
+      "category": "fictional",
+      "origin": "written"
+    }
+  ]
+}

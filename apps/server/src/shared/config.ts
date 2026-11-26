@@ -29,3 +29,13 @@ export const answerConfig = {
     evidenceTokens: 8000,
   },
 } as const;
+
+/** Answer eval files. Everything with question or answer text is under data/. Only the lock is committed: ids, categories and a hash. */
+export const answerEvalConfig = {
+  writtenFile: path.join(dataDir, "eval", "answer-written.json"),
+  draftFile: path.join(dataDir, "eval", "answer-subset.draft.json"),
+  subsetFile: path.join(dataDir, "eval", "answer-subset.json"),
+  lockFile: path.join(repoRoot, "docs", "eval", "answer-subset.lock.json"),
+  runsDir: path.join(dataDir, "eval"),
+  seed: 13,
+} as const;

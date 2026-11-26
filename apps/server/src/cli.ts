@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { ASK_USAGE, askCommand } from "./commands/ask.ts";
+import { EVAL_ANSWERS_USAGE, evalAnswersCommand } from "./commands/eval-answers.ts";
 import { calibrate, formatCalibration, formatComparison, formatReport, labelled, runRetrievalEval, type RetrievalReport } from "./features/eval/index.ts";
 import { buildIndex, loadEmbedder, openIndex, statusOf, type BuildReport, type Channel, type SearchResult } from "./features/search/index.ts";
 import { config } from "./shared/config.ts";
@@ -12,7 +13,8 @@ const USAGE = `Usage:
   hpt ask "<question>" [-c] [--note <note id>] [--model sonnet|opus|haiku] [--effort low|medium|high] [--json]
   hpt eval retrieval [--out <dir>] [--misses 30]
   hpt eval compare <before run.json> <after run.json>
-  hpt eval evidence <run.json>`;
+  hpt eval evidence <run.json>
+${EVAL_ANSWERS_USAGE}`;
 
 function printBuild(report: BuildReport, outFile: string): void {
   const mb = (report.bytes / 1_048_576).toFixed(1);
@@ -120,6 +122,14 @@ async function main(argv: string[]): Promise<number> {
     } catch (cause) {
       return fail(`${cause instanceof Error ? cause.message : String(cause)}
 ${ASK_USAGE}`);
+    }
+  }
+  if (command === "eval" && rest[0]?.startsWith("answers")) {
+    try {
+      return await evalAnswersCommand(rest[0], rest.slice(1));
+    } catch (cause) {
+      return fail(`${cause instanceof Error ? cause.message : String(cause)}
+${EVAL_ANSWERS_USAGE}`);
     }
   }
   if (command === "eval" && rest[0] === "retrieval") {
