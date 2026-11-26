@@ -1,0 +1,16 @@
+{
+  "name": "@hpt/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "vault:build": "node src/features/corpus/build-vault.ts"
+  },
+  "dependencies": {
+    "node-html-parser": "^9.0.7",
+    "turndown": "^7.2.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/turndown": "^5.0.0"
+  }
+}
