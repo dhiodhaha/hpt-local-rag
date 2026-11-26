@@ -95,6 +95,18 @@ describe("a KEPUTUSAN with no marker", () => {
     assert.deepEqual(decisions.withoutSpan, [{ heading: "KEPUTUSAN TENTANG PERKARA TANPA AMAR", line: lineOf(body, "KEPUTUSAN TENTANG PERKARA TANPA AMAR"), endedBy: "section" }]);
   });
 
+  test("a title repeated under its own table-of-contents entry is one scope, not two", () => {
+    const repeated = compiledBook([
+      { title: "KEPUTUSAN TENTANG ULANG UJI (HALAMAN 12)", lines: ["KEPUTUSAN TENTANG ULANG UJI", "Menimbang :", sentences(1, 30), "Dalil-dalil untuk uji :", sentences(2, 30)] },
+    ]);
+    assert.equal(spans(repeated).decisions.withoutSpan.length, 1);
+    const withMarker = compiledBook([
+      { title: "KEPUTUSAN TENTANG ULANG UJI (HALAMAN 12)", lines: ["KEPUTUSAN TENTANG ULANG UJI", "Memutuskan :", `xputusan ${sentences(1, 30)}`] },
+    ]);
+    assert.equal(spans(withMarker).decisions.spans[0]?.heading, "KEPUTUSAN TENTANG ULANG UJI");
+    assert.equal(spans(withMarker).decisions.withoutSpan.length, 0);
+  });
+
   test("a prose sentence that starts with Menetapkan is not a marker", () => {
     assert.equal(spans(body).decisions.unscopedMarkers.length, 0);
   });

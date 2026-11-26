@@ -192,16 +192,25 @@ function classify(rest: readonly Line[], titles: ReadonlySet<string>): { items: 
   return { items, matchedTitles };
 }
 
-function spanLine(line: Line, kind: LineKind, text: string): SpanLine {
-  const shown = kind === "text" ? text : cleanHeading(text);
-  return { kind, text: shown, no: line.no, words: countWords(shown) };
+/** Non-blank lines for the span scan. A title that repeats the section it opens is dropped here, as the sections drop it. */
+function spanLines(items: readonly Item[]): SpanLine[] {
+  let top = "";
+  return items.flatMap(({ line, kind, text }) => {
+    if (kind === "blank") return [];
+    if (kind === "section") {
+      if (normalizeTitle(text) === top) return [];
+      top = normalizeTitle(text);
+    }
+    const shown = kind === "text" ? text : cleanHeading(text);
+    return [{ kind, text: shown, no: line.no, words: countWords(shown) }];
+  });
 }
 
 function toSections(lines: Line[], decisionSpans: boolean): { sections: Section[]; unmatchedTocTitles: string[]; scan: DecisionScan } {
   const { titles, rest } = extractToc(lines);
   const { items, matchedTitles } = classify(rest, titles);
   const scan = decisionSpans
-    ? findDecisionSpans(items.flatMap(({ line, kind, text }) => (kind === "blank" ? [] : [spanLine(line, kind, text)])))
+    ? findDecisionSpans(spanLines(items))
     : { spans: [], withoutSpan: [], unscopedMarkers: [] };
   const spanOfLine = new Map<number, number>();
   scan.spans.forEach((span, index) => {
