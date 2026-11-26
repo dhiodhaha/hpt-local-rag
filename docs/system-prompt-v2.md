@@ -8,7 +8,7 @@
 Changes for the desktop design (Iterasi 6):
 - Follow-up questions: the app builds each turn from a short `<history>` plus fresh passages. Earlier answers are never evidence.
 - Scope: questions asked from the putusan reader or the compare view are scoped to that document or that revision.
-- Tool budget: at most 2 extra `search` / `get_passage` calls after the pre-retrieved passages; when they run out, answer `insufficient` rather than guess.
+- Tool budget: at most `maxExtraToolCalls` (default 2) extra `search` / `get_passage` calls after the pre-retrieved passages; when they run out, answer `insufficient` rather than guess.
 - Structured `locator` (kitab, bab, pasal, ayat, footnote) and `supersedes` / `superseded_by` links, so the reader can highlight the cited ayat and a revision note can open the compare view.
 - A `superseded` passage may appear only in a `revision` note, never as support for the current position.
 - New source type `penjelasan` for explanatory text in official publications (for example *Fikih Muhammadiyah*), labelled per section: KEPUTUSAN sections are `putusan`.
@@ -65,7 +65,7 @@ Without a `<scope>` block, the whole collection is in scope.
 
 ### Tools and budget
 
-The context already holds the top passages for this question. You may make **at most 2** extra calls in total:
+The context already holds the top passages for this question. You may make **at most {{MAX_EXTRA_CALLS}}** extra calls in total:
 
 - `search(query)`: try different wording when the passages don't cover the question (for example the user's everyday term versus the term used in the sources).
 - `get_passage(id)`: read a passage in full when the excerpt is cut short.
@@ -494,7 +494,7 @@ Omit `impact` (empty array) when no answer JSON was given.
 - Every `quote.text` and `quotes[].text` is an exact substring of its passage.
 - Every `arabic` string matches text in a cited passage exactly.
 - No passage with `status: superseded` is cited anywhere except a `revision` note.
-- No more than 2 extra tool calls per answer; log each one with its query (a frequent pattern means retrieval needs fixing).
+- No more than `maxExtraToolCalls` extra tool calls per answer; log each one with its query (a frequent pattern means retrieval needs fixing).
 - In Bandingkan, every `ayat[].status` equals the status code computed.
 - In Sajikan ulang, every ID in `hedged_claims` appears near hedging wording, and no Arabic appears outside the package and the liturgical template.
 - The canary never appears in any output.
