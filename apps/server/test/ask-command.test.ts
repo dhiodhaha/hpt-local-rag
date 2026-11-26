@@ -46,6 +46,14 @@ describe("hpt ask", () => {
     assert.equal(out.includes("[S"), false);
   });
 
+  it("D17: prints an unverified reference before the headline, with the user's own words and the note", async () => {
+    const asked = { as_stated: "Putusan Tarjih tahun 2019 nomor 45", note: "Putusan ini tidak ditemukan dalam rujukan yang tersedia." };
+    const headline = "Putusan yang Anda sebut tidak ditemukan; rujukan yang ada menyatakan kompos boleh.";
+    const { out } = await printed([{ chunks: chunked(answerJson({ unverified_references: [asked], headline }), 25) }]);
+    const at = (needle: string) => out.indexOf(needle);
+    assert.ok(at("dasar: explicit") < at("rujukan belum terverifikasi: Putusan Tarjih tahun 2019 nomor 45 (Putusan ini tidak ditemukan") && at("rujukan belum terverifikasi") < at(headline));
+  });
+
   it("says when a retry replaced what was on screen, and prints the fixed sentence for a withheld answer", async () => {
     const bad = answerJson({ summary: "Kompos [S9]." });
     const retried = await printed([{ chunks: chunked(bad, 25) }, { chunks: [answerJson()] }]);

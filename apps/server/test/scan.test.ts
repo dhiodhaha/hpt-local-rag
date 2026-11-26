@@ -17,7 +17,7 @@ describe("the streamed JSON scanner", () => {
   it("reports each top-level value and each array item with its raw text, in order", () => {
     const events = withoutProgress(scanAll([FIXTURE]));
     const values = events.flatMap((event) => (event.kind === "value" ? [event.field] : []));
-    assert.deepEqual(values, ["type", "basis", "headline", "headline_short", "summary", "inference_note", "notes", "dalil", "quotes", "unverified_references", "clarifying_question", "clarifying_options", "message"]);
+    assert.deepEqual(values, ["type", "basis", "unverified_references", "headline", "headline_short", "summary", "inference_note", "notes", "dalil", "quotes", "clarifying_question", "clarifying_options", "message"]);
     const items = events.flatMap((event) => (event.kind === "item" ? [`${event.field}#${event.index}`] : []));
     assert.deepEqual(items, ["notes#0", "notes#1", "dalil#0", "quotes#0"]);
     const summary = events.find((event) => event.kind === "value" && event.field === "summary");

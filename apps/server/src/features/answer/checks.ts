@@ -203,6 +203,17 @@ export function checkQuote(wire: WireQuote, ledger: SourceLedger): Checked<Excer
 
 const filled = (value: string | null): boolean => value !== null && value.trim() !== "";
 
+const NOT_FOUND = /\b(?:tidak|belum)\s+(?:dapat\s+|bisa\s+)?(?:ditemukan|diverifikasi|terverifikasi|dipastikan|termuat|tercantum|tersedia|terdapat)\b/i;
+const LEAD_CHARS = 80;
+
+/** D17: a listed unverified reference must lead the headline. The phrase match can miss a paraphrase, so it only warns. */
+export function checkHeadlineLeads(answer: Answer): readonly Finding[] {
+  if (answer.type !== "answer" || answer.unverifiedReferences.length === 0 || answer.headline === null) return [];
+  const lead = (answer.headline.split(/[;:—]/)[0] ?? "").slice(0, LEAD_CHARS);
+  if (NOT_FOUND.test(lead)) return [];
+  return [{ code: "headline_not_leading", site: "headline", detail: "an unverified reference is listed, but the headline does not open with it", repair: null }];
+}
+
 export function checkComplete(answer: Answer): readonly Finding[] {
   const missing = (site: Site, detail: string): Finding => ({ code: "incomplete", site, detail, repair: null });
   if (answer.type === null) return [missing("type", "no type")];

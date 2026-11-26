@@ -64,10 +64,12 @@ describe("what a failed check means (D10 to D10h)", () => {
     assert.equal(actionOf(finding("arabic_not_in_source", "dalil", null)), "retry_attempt");
   });
 
-  it("only warns about field order and trailing text", () => {
+  it("only warns about field order, trailing text and a headline that does not lead with a missing reference", () => {
     assert.equal(actionOf(finding("out_of_order", "stream")), "warn");
     assert.equal(actionOf(finding("trailing_text", "stream")), "warn");
+    assert.equal(actionOf(finding("headline_not_leading", "headline")), "warn");
     assert.deepEqual(dispose([finding("out_of_order", "stream")]), { kind: "accept" });
+    assert.deepEqual(dispose([finding("headline_not_leading", "headline")]), { kind: "accept" });
   });
 
   it("reduces several findings on one value to the worst, and a drop beats a repair", () => {

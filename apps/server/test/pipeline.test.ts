@@ -27,6 +27,8 @@ function run(chunks: readonly string[], options: { passages?: Parameters<typeof 
 const names = (events: readonly AnswerEvent[]) => events.filter((event) => event.kind !== "progress").map((event) => (event.kind === "field" || event.kind === "item" ? `${event.kind}:${event.name}` : event.kind));
 
 const GOOD = answerJson();
+const MISSING = [{ as_stated: "Putusan Tarjih tahun 2019 nomor 45", note: "Putusan ini tidak ditemukan dalam rujukan yang tersedia, sehingga isinya tidak dapat dipastikan." }];
+const LEADING = "Putusan yang Anda sebut tidak ditemukan; rujukan yang ada menyatakan kompos boleh dibuat.";
 
 describe("the field pipeline", () => {
   it("commits fields in the prompt's order and folds to the answer, with the source's own text for Arabic and quotes", () => {
@@ -77,16 +79,51 @@ describe("the field pipeline", () => {
     assert.ok(events.slice(0, summaryAt).filter((event) => event.kind === "progress").length === progress.length);
   });
 
-  it("shows basis before headline even when the model writes them the other way round, and only warns", () => {
-    const order = ["type", "headline", "basis", "headline_short", "summary", "inference_note", "notes", "dalil", "quotes", "unverified_references", "clarifying_question", "clarifying_options", "message"];
-    const { events, abort, pipeline } = run([answerJson({}, order)]);
+  it("shows basis and the unverified references before the headline when the model writes the headline first, and only warns", () => {
+    const order = ["type", "headline", "basis", "unverified_references", "headline_short", "summary", "inference_note", "notes", "dalil", "quotes", "clarifying_question", "clarifying_options", "message"];
+    const { events, abort, pipeline } = run([answerJson({ unverified_references: MISSING, headline: LEADING }, order)]);
     assert.equal(abort, null);
-    assert.deepEqual(names(events).slice(0, 4), ["field:type", "field:basis", "field:headline", "field:headline_short"]);
-    assert.deepEqual(pipeline.findings.map((found) => [found.code, actionOf(found)]), [["out_of_order", "warn"]]);
+    assert.deepEqual(names(events).slice(0, 5), ["field:type", "field:basis", "item:unverified_references", "field:headline", "field:headline_short"]);
+    assert.ok(pipeline.findings.length > 0 && pipeline.findings.every((found) => found.code === "out_of_order" && actionOf(found) === "warn"));
+  });
+
+  it("D17: releases an unverified reference after basis and before the headline, at any chunking", () => {
+    const text = answerJson({ unverified_references: MISSING, headline: LEADING });
+    for (const size of [1, 9, 4096]) {
+      const { events, abort, pipeline } = run(chunked(text, size));
+      assert.equal(abort, null, `chunks of ${size}`);
+      assert.deepEqual(names(events).slice(0, 4), ["field:type", "field:basis", "item:unverified_references", "field:headline"], `chunks of ${size}`);
+      assert.deepEqual(pipeline.findings, []);
+      assert.deepEqual(pipeline.answer.unverifiedReferences, [{ asStated: "Putusan Tarjih tahun 2019 nomor 45", note: MISSING[0]!.note }]);
+    }
+  });
+
+  it("D17: a model that still lists the references last has its headline held until the list closes", () => {
+    const old = ["type", "basis", "headline", "headline_short", "summary", "inference_note", "notes", "dalil", "quotes", "unverified_references", "clarifying_question", "clarifying_options", "message"];
+    const text = answerJson({ unverified_references: MISSING, headline: LEADING }, old);
+    const closing = text.indexOf('"unverified_references"');
+    const pipeline = createPipeline({ ledger: ledgerOf(ONE, TWO), tripwire: createTripwire(CANARY) });
+    assert.equal(names(pipeline.push(text.slice(0, closing)).events).includes("field:headline"), false);
+    const rest = pipeline.push(text.slice(closing));
+    assert.deepEqual(names(rest.events).slice(0, 3), ["item:unverified_references", "field:headline", "field:headline_short"]);
+    assert.equal(pipeline.finish().abort, null);
+    assert.ok(pipeline.findings.every((found) => found.code === "out_of_order"));
+  });
+
+  it("D17: warns, and delivers, when a listed reference is not what the headline opens with", () => {
+    const confident = run([answerJson({ unverified_references: MISSING, headline: "Menurut HPT, kompos boleh dibuat dari sisa daun; putusan nomor 45 tidak ditemukan." })]);
+    assert.equal(confident.abort, null);
+    assert.deepEqual(confident.pipeline.findings.map((found) => [found.code, found.site, actionOf(found)]), [["headline_not_leading", "headline", "warn"]]);
+    assert.equal(confident.pipeline.answer.headlineState, "settled");
+
+    for (const headline of [LEADING, "Rujukan yang Anda sebut belum dapat diverifikasi; HPT menyatakan boleh.", "Putusan Tarjih no. 45 tidak termuat dalam rujukan, namun HPT menyatakan boleh."]) {
+      assert.deepEqual(run([answerJson({ unverified_references: MISSING, headline })]).pipeline.findings, [], headline);
+    }
+    assert.deepEqual(run([answerJson()]).pipeline.findings, []);
   });
 
   it("holds later fields while an earlier one has not arrived, and releases them when the object closes", () => {
-    const withoutNote = answerJson({}, ["type", "basis", "headline", "headline_short", "summary", "notes", "dalil", "quotes", "unverified_references", "clarifying_question", "clarifying_options", "message"]);
+    const withoutNote = answerJson({}, ["type", "basis", "unverified_references", "headline", "headline_short", "summary", "notes", "dalil", "quotes", "clarifying_question", "clarifying_options", "message"]);
     const closing = withoutNote.length - 1;
     const pipeline = createPipeline({ ledger: ledgerOf(ONE, TWO), tripwire: createTripwire(CANARY) });
     const before = pipeline.push(withoutNote.slice(0, closing));

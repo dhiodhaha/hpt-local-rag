@@ -1,8 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { AnswerEngine, EngineSettings, Finished } from "../../answer/index.ts";
+import type { AnswerEngine, EngineSettings, Finished, HistoryEntry } from "../../answer/index.ts";
 import type { FailureCode } from "../../providers/index.ts";
-import type { AnswerCase } from "./cases.ts";
 
 /**
  * Runs the locked subset through the SAME engine `hpt ask` uses (compose()), one case at a time. One subscription and one warm
@@ -14,6 +13,8 @@ import type { AnswerCase } from "./cases.ts";
  * run and is not recorded, so the resumed run asks that question again.
  */
 export type RunSettings = Partial<Pick<EngineSettings, "model" | "effort" | "maxExtraToolCalls">>;
+
+export type RunCase = { readonly id: string; readonly question: string };
 
 export type RunRecord = {
   readonly v: 1;
@@ -37,9 +38,10 @@ export type Run = {
   readonly stoppedBy: StoppedBy | null;
 };
 
-export type RunInput = {
+export type RunInput<Case extends RunCase = RunCase> = {
   readonly engine: AnswerEngine;
-  readonly cases: readonly AnswerCase[];
+  readonly cases: readonly Case[];
+  readonly historyOf?: (item: Case, records: readonly RunRecord[]) => readonly HistoryEntry[];
   readonly subsetHash: string;
   readonly runId: string;
   readonly runFile: string;
@@ -66,7 +68,7 @@ export function readRecords(file: string): RunRecord[] {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-export async function runAnswerEval(input: RunInput): Promise<Run> {
+export async function runAnswerEval<Case extends RunCase>(input: RunInput<Case>): Promise<Run> {
   const { engine, cases, runId, runFile, subsetHash } = input;
   const records = readRecords(runFile);
   const mixed = records.find((record) => record.subsetHash !== subsetHash);
@@ -82,7 +84,8 @@ export async function runAnswerEval(input: RunInput): Promise<Run> {
   for (const item of pending) {
     if (input.signal?.aborted) break;
     if (input.pauseMs) await sleep(input.pauseMs);
-    const finished = await engine.ask({ question: item.question, history: [], scope: null }, { label: item.id, overrides: input.overrides, signal: input.signal });
+    const history = input.historyOf?.(item, records) ?? [];
+    const finished = await engine.ask({ question: item.question, history: [...history], scope: null }, { label: item.id, overrides: input.overrides, signal: input.signal });
     const { outcome } = finished;
     if (outcome.kind === "cancelled") break;
     if (outcome.kind === "failed" && STOPS.has(outcome.code)) {
