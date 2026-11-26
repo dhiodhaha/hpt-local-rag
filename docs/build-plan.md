@@ -174,8 +174,7 @@ apps/
   server/src/
     features/
       corpus/      snapshot → vault (done)
-      indexing/    vault → passages, links, FTS5, vectors
-      search/      hybrid search, RRF, evidence signal
+      search/      one feature owns hpt.sqlite: chunking, build, FTS5, vectors, RRF, evidence signal
       answer/      context budgets, prompt building, question kinds
       providers/   claude/ and codex/, one event stream shape
       mcp/         HPT tools, in-process and HTTP

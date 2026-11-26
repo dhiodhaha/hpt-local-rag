@@ -1,0 +1,6 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": { "correctness": "error" },
+  "rules": { "no-nested-ternary": "error" },
+  "ignorePatterns": ["data/**", "node_modules/**"]
+}

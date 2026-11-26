@@ -3,14 +3,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "vault:build": "node src/features/corpus/build-vault.ts"
+    "vault:build": "node src/features/corpus/build-vault.ts",
+    "hpt": "node src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/**/*.test.ts\""
   },
   "dependencies": {
+    "better-sqlite3": "^13.2.0",
     "node-html-parser": "^9.0.7",
     "turndown": "^7.2.5"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.0.0",
-    "@types/turndown": "^5.0.0"
+    "@types/turndown": "^5.0.0",
+    "typescript": "^7.0.2"
   }
 }
