@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { compose } from "../compose.ts";
-import { EXCEPTION_WITHHELD, type AnswerEvent, type Excerpt, type Finished, type Prose, type Scope, type SourceCard } from "../features/answer/index.ts";
+import { EXCEPTION_WITHHELD, fallbackNotice, modelName, type AnswerEvent, type Excerpt, type Finished, type Prose, type Scope, type SourceCard } from "../features/answer/index.ts";
 import type { Effort } from "../features/providers/index.ts";
 import { IndexUnavailableError } from "../features/search/index.ts";
 
@@ -62,6 +62,9 @@ export function createPrinter(output: (text: string) => void, options: PrinterOp
         headline = null;
         streamed = "";
         printed = false;
+        return;
+      case "fallback":
+        write(`${fallbackNotice(event.route, event.from)}\n`);
         return;
       case "tool_call":
         write(`  panggilan tambahan ${event.n}: ${event.tool} "${event.arg}"${event.denied ? " (ditolak, batas habis)" : ""}\n`);
@@ -131,6 +134,7 @@ export function summaryLines(finished: Finished): string[] {
   const mark = (name: string) => attempt?.committedMs.find((entry) => entry.name === name)?.ms;
   const edits = trace.attempts.flatMap((each) => each.edits).map((edit) => edit.kind);
   const findings = trace.attempts.flatMap((each) => each.findings);
+  const route = attempt?.route ?? { model: trace.model, effort: trace.effort };
   const wait = attempt === undefined ? "-" : `${attempt.providerWaitMs} ms (${attempt.warm ? "warm" : "fresh"})`;
   const first = [
     `retrieval ${trace.retrieval.ms} ms`,
@@ -146,7 +150,7 @@ export function summaryLines(finished: Finished): string[] {
     `tools ${trace.tools.length}`,
     `repairs ${edits.length}${edits.length === 0 ? "" : ` (${[...new Set(edits)].join(", ")})`}`,
     `findings ${findings.length}${findings.length === 0 ? "" : ` (${findings.map((found) => `${found.code}@${found.site}`).join(", ")})`}`,
-    `${trace.model} ${trace.effort}`,
+    `${route.model} ${route.effort}${attempt?.fallback == null ? "" : ` (cadangan, batas ${modelName(attempt.fallback.from)})`}`,
     trace.conversation === null ? null : `conversation ${trace.conversation}`,
   ].filter((part) => part !== null);
   return [`trace  ${first.join(" · ")}`, `       ${second.join(" · ")}`];

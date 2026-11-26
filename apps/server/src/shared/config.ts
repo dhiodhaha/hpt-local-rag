@@ -27,6 +27,7 @@ export const answerConfig = {
     maxExtraToolCalls: 2,
     searchLimit: 10,
     evidenceTokens: 8000,
+    fallbacks: { "claude-opus-5-5": { model: "claude-sonnet-5-5", effort: "low" } },
   },
 } as const;
 

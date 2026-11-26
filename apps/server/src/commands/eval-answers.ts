@@ -139,7 +139,8 @@ export async function runCommand(argv: string[]): Promise<number> {
   const runId = values.run ?? runIdOf(settings);
   const runFile = runFileOf(runId);
 
-  const composed = await compose({ settings });
+  // A spent limit stops the run so it resumes on the same model, instead of finishing on another one.
+  const composed = await compose({ settings: { ...settings, fallbacks: {} } });
   try {
     // The first search loads the embedding model, about a second. The app loads it at launch, so the eval does too.
     await composed.index.search("shalat", { limit: 1 });

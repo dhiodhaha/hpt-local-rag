@@ -41,7 +41,8 @@ async function runCommand(argv: string[]): Promise<number> {
   const runFile = runFileOf(runId);
   const cases = LEVEL_8.slice(0, whole(values.first, "first"));
 
-  const composed = await compose({ settings });
+  // A spent limit stops the run so it resumes on the same model, instead of finishing on another one.
+  const composed = await compose({ settings: { ...settings, fallbacks: {} } });
   try {
     await composed.index.search("shalat", { limit: 1 });
     console.log(`Run ${runId}: ${settings.model} ${settings.effort}, up to ${settings.maxExtraToolCalls} extra calls, ${cases.length} cases. Results go to ${runFile}.`);
