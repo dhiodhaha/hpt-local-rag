@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RESTART_WHY, citedOf, fallbackNotice, type PassageId } from "@hpt/server/client";
+import { MOTION } from "../motion.ts";
 import { Button, Disclaimer, EarlierTurn, RecheckNotice, SkeletonRow, ThinkingStatus } from "../ui/index.ts";
 import { AnswerCardView } from "./AnswerCardView.tsx";
 import { COPY } from "./copy.ts";
@@ -53,9 +54,27 @@ function Status({ turn, view, onCancel }: { turn: Turn; view: RunView; onCancel:
   );
 }
 
+type AnswerView = Extract<RunView, { kind: "answer" }>;
+
+/** The old card fades out for `restartFadeOutMs` before the recheck line fades in, so the two never overlap. */
+function useRestartHold(view: RunView): AnswerView | null {
+  const lastAnswer = useRef<AnswerView | null>(null);
+  if (view.kind === "answer") lastAnswer.current = view;
+  const [released, setReleased] = useState(false);
+  useEffect(() => {
+    if (view.kind !== "rechecking") {
+      setReleased(false);
+      return;
+    }
+    const timer = setTimeout(() => setReleased(true), MOTION.restartFadeOutMs);
+    return () => clearTimeout(timer);
+  }, [view.kind]);
+  return view.kind === "rechecking" && !released ? lastAnswer.current : null;
+}
+
 function Rechecking({ copy }: { copy: string }) {
   return (
-    <>
+    <div className="m-restart-in">
       <section style={{ background: "var(--color-surface)", borderRadius: "var(--radius-lg)", padding: "26px 28px 26px" }} data-card="rechecking">
         <div className="lbl" style={{ color: "var(--color-accent)" }}>
           {COPY.answerLabel}
@@ -76,14 +95,16 @@ function Rechecking({ copy }: { copy: string }) {
       <div style={{ margin: "16px 4px 0" }}>
         <Disclaimer t={COPY.disclaimer} />
       </div>
-    </>
+    </div>
   );
 }
 
 export function TurnView({ turn, latest, active, onCite, onPick, onRetry, onCancel }: TurnViewProps) {
   const [open, setOpen] = useState(false);
   const { run } = turn;
-  const view = viewOf(run);
+  const current = viewOf(run);
+  const held = useRestartHold(current);
+  const view: RunView = held ?? current;
   const cited = citedOf(run.answer);
   const numberOf = (id: PassageId) => {
     const at = cited.indexOf(id);
@@ -96,7 +117,7 @@ export function TurnView({ turn, latest, active, onCite, onPick, onRetry, onCanc
       <div style={BUBBLE_STYLE}>{turn.question}</div>
     </div>
   );
-  const answer = view.kind === "answer" ? <AnswerCardView card={view.card} context={context} /> : null;
+  const answer = view.kind === "answer" ? <AnswerCardView card={view.card} context={context} revealOnArrival={turn.fresh && run.outcome === null} /> : null;
 
   if (!latest && view.kind === "answer" && view.card.finished) {
     const { headline } = view.card;
@@ -121,7 +142,11 @@ export function TurnView({ turn, latest, active, onCite, onPick, onRetry, onCanc
       <Status turn={turn} view={view} onCancel={onCancel} />
       {view.kind === "answer" ? <FallbackLine turn={turn} /> : null}
       {view.kind === "rechecking" ? <Rechecking copy={view.copy} /> : null}
-      {view.kind === "answer" ? answer : null}
+      {view.kind === "answer" ? (
+        <div className="m-hold" data-leaving={held !== null}>
+          {answer}
+        </div>
+      ) : null}
       {view.kind === "reply" ? (
         <div style={{ marginTop: view.type === "clarify" ? 22 : 18 }}>
           <ReplyView reply={view} onPick={onPick} />

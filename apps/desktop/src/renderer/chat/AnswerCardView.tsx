@@ -1,9 +1,11 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { EXCEPTION_WITHHELD, type Dalil, type Note, type PassageId, type SourceCard, type WithheldException } from "@hpt/server/client";
-import { Badge, Disclaimer, ExpandRow, SkeletonRow, SourceTag, UnverifiedRefNotice, VerifyMark, type BadgeTone, type SkeletonRowPosition } from "../ui/index.ts";
+import { EXCEPTION_WITHHELD, type Dalil, type Note, type PassageId, type Prose, type SourceCard, type WithheldException } from "@hpt/server/client";
+import { MOTION } from "../motion.ts";
+import { Badge, Disclaimer, ExpandRow, Presence, SkeletonRow, SourceTag, SwapSlot, UnverifiedRefNotice, VerifyMark, type BadgeTone, type SkeletonRowPosition } from "../ui/index.ts";
 import { AnswerActions } from "./AnswerActions.tsx";
 import { COPY } from "./copy.ts";
 import { ProseView } from "./ProseView.tsx";
+import { useReveal } from "./useReveal.ts";
 import { plainTextOf, type AnswerCard, type RowKind, type SectionRow } from "./view.ts";
 
 export type CardContext = {
@@ -41,6 +43,8 @@ const BULB = (
 
 const titleOf = (sources: readonly SourceCard[], id: PassageId | undefined) => sources.find((card) => card.passage.id === id)?.passage.title ?? null;
 
+const staggerSlot = (index: number): CSSProperties => ({ "--i": index }) as CSSProperties;
+
 function Cites({ ids, context }: { ids: readonly PassageId[]; context: CardContext }) {
   const marks = ids.flatMap((id) => {
     const number = context.numberOf(id);
@@ -58,17 +62,17 @@ function Cites({ ids, context }: { ids: readonly PassageId[]; context: CardConte
   );
 }
 
-function NoteItem({ note, context }: { note: Note | WithheldException; context: CardContext }) {
+function NoteItem({ note, context, index }: { note: Note | WithheldException; context: CardContext; index: number }) {
   if ("withheld" in note) {
     return (
-      <div className="it-card">
+      <div className="it-card" style={staggerSlot(index)}>
         <div className="it-warn">{EXCEPTION_WITHHELD}</div>
       </div>
     );
   }
   const { tone, label } = NOTE_BADGE[note.kind];
   return (
-    <div className="it-card">
+    <div className="it-card" style={staggerSlot(index)}>
       <div className="it-top">
         <Badge tone={tone} t={label} />
         {note.basis === "inferred" ? <Badge /> : null}
@@ -82,12 +86,12 @@ function NoteItem({ note, context }: { note: Note | WithheldException; context: 
   );
 }
 
-function DalilItem({ dalil, context }: { dalil: Dalil; context: CardContext }) {
+function DalilItem({ dalil, context, index }: { dalil: Dalil; context: CardContext; index: number }) {
   const inferred = dalil.explanationBasis === "inferred";
   const title = titleOf(context.sources, dalil.sources[0]);
   const where = title === null ? dalil.reference : `${dalil.reference} · dikutip dalam ${title}`;
   return (
-    <div className="it-card">
+    <div className="it-card" style={staggerSlot(index)}>
       <div className="it-top">
         <Badge tone="kind" t={DALIL_LABEL[dalil.kind]} />
         <SourceTag t={where} />
@@ -132,76 +136,102 @@ function positionOf(index: number, total: number): SkeletonRowPosition {
 
 const ROW_TITLE = { notes: COPY.notes, dalil: COPY.dalil } as const satisfies Record<RowKind, string>;
 
+const ROWS_FROM = 2;
+
+function itemsOf(section: RowKind, card: AnswerCard, context: CardContext): ReactNode {
+  if (section === "notes") return card.notes.map((note, n) => <NoteItem key={note.id} note={note} context={context} index={n} />);
+  return card.dalil.map((dalil, n) => <DalilItem key={dalil.id} dalil={dalil} context={context} index={n} />);
+}
+
 function Rows({ rows, card, context }: { rows: readonly SectionRow[]; card: AnswerCard; context: CardContext }) {
   const [open, setOpen] = useState<RowKind | null>(null);
   if (rows.length === 0) return null;
   return (
     <section className="grp" style={{ marginTop: 10 }}>
       {rows.map((row, index) => {
-        if (row.kind === "skeleton") return <SkeletonRow key={row.section} pos={positionOf(index, rows.length)} />;
-        const isOpen = open === row.section;
-        const items: ReactNode =
-          row.section === "notes"
-            ? card.notes.map((note) => <NoteItem key={note.id} note={note} context={context} />)
-            : card.dalil.map((dalil) => <DalilItem key={dalil.id} dalil={dalil} context={context} />);
-        const header = (
-          <div data-row={row.section}>
-            <ExpandRow state={isOpen ? "open" : "closed"} title={ROW_TITLE[row.section]} hint={row.hint ?? ""} count={String(row.count)} onToggle={() => setOpen(isOpen ? null : row.section)}>
-              {items}
-            </ExpandRow>
-          </div>
-        );
-        return isOpen ? (
-          <div key={row.section} className="it-open">
-            {header}
-          </div>
-        ) : (
-          <div key={row.section}>{header}</div>
+        const isOpen = row.kind === "items" && open === row.section;
+        const items = row.kind === "items" ? itemsOf(row.section, card, context) : null;
+        const header =
+          row.kind === "items" ? (
+            <div data-row={row.section}>
+              <ExpandRow state={isOpen ? "open" : "closed"} title={ROW_TITLE[row.section]} hint={row.hint ?? ""} count={String(row.count)} onToggle={() => setOpen(isOpen ? null : row.section)}>
+                {items}
+              </ExpandRow>
+            </div>
+          ) : null;
+        return (
+          <SwapSlot key={row.section} className="m-field" style={staggerSlot(ROWS_FROM + index)} loading={row.kind === "skeleton"} skeleton={<SkeletonRow pos={positionOf(index, rows.length)} />}>
+            <div className={isOpen ? "it-open m-open" : undefined}>{header}</div>
+          </SwapSlot>
         );
       })}
     </section>
   );
 }
 
-export function AnswerCardView({ card, context }: { card: AnswerCard; context: CardContext }) {
+function Summary({ prose, caret, animated, context }: { prose: Prose; caret: boolean; animated: boolean; context: CardContext }) {
+  return (
+    <p style={{ fontSize: 17, fontWeight: 500, lineHeight: 1.7, marginTop: 14, maxWidth: 620, textWrap: "pretty" }}>
+      <ProseView spans={prose} numberOf={context.numberOf} active={context.active} onCite={context.onCite} words={animated} caret={caret} />
+    </p>
+  );
+}
+
+export type AnswerCardViewProps = {
+  card: AnswerCard;
+  context: CardContext;
+  revealOnArrival?: boolean;
+};
+
+export function AnswerCardView({ card, context, revealOnArrival = false }: AnswerCardViewProps) {
   const hasReference = card.unverified.length > 0;
+  const { prose, complete, animated } = useReveal(card.summary, revealOnArrival);
+  const showSkeleton = card.headline === null && !hasReference;
   return (
     <>
-      <section style={{ background: "var(--color-surface)", borderRadius: "var(--radius-lg)", padding: hasReference ? "24px 28px 22px" : "26px 28px 24px" }} data-card="answer">
+      <section className="m-surface" style={{ background: "var(--color-surface)", borderRadius: "var(--radius-lg)", padding: hasReference ? "24px 28px 22px" : "26px 28px 24px" }} data-card="answer">
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div className="lbl" style={{ color: "var(--color-accent)" }}>
             {COPY.answerLabel}
           </div>
           {card.headline?.inferred ? <Badge /> : null}
-          {card.headline?.verifying ? (
-            <span style={{ marginLeft: "auto" }} data-headline="verifying">
-              <VerifyMark />
-            </span>
-          ) : null}
+          <span style={{ marginLeft: "auto" }}>
+            <Presence show={card.headline?.verifying === true} exitMs={MOTION.verifyPillFadeMs}>
+              {(closing) => (
+                <span className="m-verify" data-closing={closing} data-headline={closing ? "settling" : "verifying"}>
+                  <VerifyMark />
+                </span>
+              )}
+            </Presence>
+          </span>
         </div>
         {card.unverified.map((reference) => (
           <div key={reference.asStated} style={{ marginTop: 14 }}>
             <UnverifiedRefNotice rl={COPY.unverifiedLabel} rq={`“${reference.asStated}”`} nt={reference.note} />
           </div>
         ))}
-        {card.headline === null && !hasReference ? (
-          <div style={{ marginTop: 18 }}>
-            <div className="sk" style={{ width: "88%", height: 18 }} />
-            <div className="sk" style={{ width: "54%", height: 18, marginTop: 10 }} />
-          </div>
-        ) : null}
-        {card.headline === null ? null : (
-          <h2 style={{ ...HEADLINE_STYLE, marginTop: hasReference ? 16 : 12, color: card.headline.verifying ? "color-mix(in srgb,var(--color-ink) 75%,var(--color-surface))" : "var(--color-ink)", transition: "color 200ms ease-out" }}>
-            {card.headline.text}
-          </h2>
+        {hasReference && card.headline === null ? null : (
+          <SwapSlot
+            fade={false}
+            loading={showSkeleton}
+            style={{ marginTop: hasReference ? 16 : 12 }}
+            skeleton={
+              <div style={{ paddingTop: 6 }}>
+                <div className="sk" style={{ width: "88%", height: 18 }} />
+                <div className="sk" style={{ width: "54%", height: 18, marginTop: 10 }} />
+              </div>
+            }
+          >
+            {card.headline === null ? null : (
+              <h2 className="m-headline" data-verifying={card.headline.verifying} style={HEADLINE_STYLE}>
+                {card.headline.text}
+              </h2>
+            )}
+          </SwapSlot>
         )}
-        {card.summary === null ? null : (
-          <p style={{ fontSize: 17, fontWeight: 500, lineHeight: 1.7, marginTop: 14, maxWidth: 620, textWrap: "pretty" }}>
-            <ProseView spans={card.summary} numberOf={context.numberOf} active={context.active} onCite={context.onCite} streaming={card.summaryStreaming} />
-          </p>
-        )}
+        {prose === null ? null : <Summary prose={prose} caret={card.summaryStreaming || !complete} animated={animated} context={context} />}
         {card.inferenceNote === null ? null : (
-          <p style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--color-rule)", maxWidth: 620, fontSize: "var(--text-sm)", fontWeight: 500, lineHeight: 1.5, color: "var(--color-inferred)" }}>
+          <p className="m-field" style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--color-rule)", maxWidth: 620, fontSize: "var(--text-sm)", fontWeight: 500, lineHeight: 1.5, color: "var(--color-inferred)", ...staggerSlot(1) }}>
             <span style={{ flex: "none", marginTop: 2 }}>{BULB}</span>
             <span>
               <ProseView spans={card.inferenceNote} numberOf={context.numberOf} active={context.active} onCite={context.onCite} />
@@ -210,10 +240,13 @@ export function AnswerCardView({ card, context }: { card: AnswerCard; context: C
         )}
       </section>
       <Rows rows={card.rows} card={card} context={context} />
-      {card.finished ? <AnswerActions text={plainTextOf(card)} /> : null}
-      <div style={{ margin: "16px 4px 0" }}>
-        <Disclaimer t={COPY.disclaimer} />
-      </div>
+      {card.finished && complete ? (
+        <AnswerActions text={plainTextOf(card)} index={ROWS_FROM + card.rows.length} />
+      ) : (
+        <div style={{ margin: "16px 4px 0" }}>
+          <Disclaimer t={COPY.disclaimer} />
+        </div>
+      )}
     </>
   );
 }

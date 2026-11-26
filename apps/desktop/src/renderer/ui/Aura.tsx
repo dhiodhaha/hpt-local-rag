@@ -5,6 +5,13 @@ export type AuraProps = {
   state?: AuraState;
 };
 
+/** One layer per state, so a change of state is a cross-fade of opacity and not a jump between gradients. */
 export function Aura({ state = "idle" }: AuraProps) {
-  return <div className="aura" data-state={state} aria-hidden="true" />;
+  return (
+    <div className="aura" data-state={state} aria-hidden="true">
+      {AURA_STATES.map((layer) => (
+        <div key={layer} className="aura-l" data-layer={layer} data-on={layer === state} />
+      ))}
+    </div>
+  );
 }

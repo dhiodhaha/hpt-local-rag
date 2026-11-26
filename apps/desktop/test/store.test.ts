@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { createClient } from "@hpt/server/client";
-import { memoryPipe, scenarioHost, type ScenarioName } from "@hpt/server/testing";
+import { memoryPipe, scenarioHost, seedConversations, type ScenarioName } from "@hpt/server/testing";
 import { createChatStore, eventBuffer, isBusy } from "../src/renderer/chat/store.ts";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -106,5 +106,92 @@ describe("the event buffer", () => {
     flush();
     buffer.push("a", { kind: "finished", outcome: { kind: "delivered" } });
     assert.deepEqual(applied, [["a", ["attempt", "settled"]], ["a", ["finished"]]]);
+  });
+});
+
+async function riwayatRig() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hpt-riwayat-"));
+  await seedConversations(dir);
+  const host = scenarioHost("riwayat", { conversationsDir: dir, delayMs: 0 });
+  const client = createClient(memoryPipe(host));
+  const store = createChatStore(client, { schedule: (flush) => flush(), searchDelayMs: 0 });
+  await until(() => client.state().kind === "ready", "the host");
+  await store.getState().refreshHistory();
+  return { store, host };
+}
+
+describe("Riwayat in the store", () => {
+  it("lists the stored conversations, newest first", async () => {
+    const { store, host } = await riwayatRig();
+    const { history } = store.getState();
+    assert.equal(history.state, "ready");
+    assert.equal(history.conversations.length, 7);
+    const stamps = history.conversations.map((entry) => entry.updatedAt);
+    assert.deepEqual(stamps, stamps.toSorted().reverse());
+    await host.close();
+  });
+
+  it("reopens a conversation with its stored answers as they were, and a follow-up continues it", async () => {
+    const { store, host } = await riwayatRig();
+    const target = store.getState().history.conversations.find((entry) => entry.turns === 2);
+    assert.ok(target);
+    await store.getState().openConversation(target.id);
+    const opened = store.getState();
+    assert.equal(opened.conversation, target.id);
+    assert.deepEqual(opened.turns.map((turn) => [turn.fresh, turn.run.outcome?.kind]), [[false, "delivered"], [false, "delivered"]]);
+    assert.equal(opened.turns[0]?.run.answer.headline, "Menurut HPT, kompos boleh dibuat dari sisa daun.");
+    assert.equal(opened.turns[0]?.run.answer.headlineState, "settled");
+    assert.ok((opened.turns[0]?.run.sources.length ?? 0) > 0);
+    opened.send("Lanjut?");
+    await until(() => !isBusy(store.getState()), "the follow-up");
+    assert.equal(store.getState().conversation, target.id);
+    await until(() => store.getState().history.conversations.find((entry) => entry.id === target.id)?.turns === 3, "the refreshed history");
+    await host.close();
+  });
+
+  it("does not open another conversation while a question is running", async () => {
+    const { store, host } = await riwayatRig();
+    store.getState().send("sedang berjalan");
+    await store.getState().openConversation(store.getState().history.conversations[3]?.id ?? "");
+    assert.equal(store.getState().turns.length, 1);
+    assert.equal(store.getState().turns[0]?.fresh, true);
+    await until(() => !isBusy(store.getState()), "the answer");
+    await host.close();
+  });
+
+  it("searches, and shows only the answer to the latest query", async () => {
+    const { store, host } = await riwayatRig();
+    store.getState().openSearch();
+    store.getState().setQuery("dilarang");
+    store.getState().setQuery("kompos");
+    await until(() => store.getState().search.settled === "kompos", "the search");
+    assert.ok((store.getState().search.result?.hits.length ?? 0) >= 5);
+    store.getState().setQuery("");
+    assert.equal(store.getState().search.result, null);
+    store.getState().closeSearch();
+    assert.equal(store.getState().search.open, false);
+    await host.close();
+  });
+
+  it("renames in place, and deleting the open conversation clears the screen", async () => {
+    const { store, host } = await riwayatRig();
+    const [first] = store.getState().history.conversations;
+    assert.ok(first);
+    await store.getState().openConversation(first.id);
+    store.getState().startRename(first.id);
+    assert.equal(store.getState().renaming, first.id);
+    await store.getState().commitRename(first.id, "  Catatan kebun  ");
+    assert.equal(store.getState().renaming, null);
+    assert.equal(store.getState().history.conversations.find((entry) => entry.id === first.id)?.title, "Catatan kebun");
+
+    store.getState().askDelete(first.id);
+    assert.equal(store.getState().confirming?.id, first.id);
+    store.getState().cancelDelete();
+    assert.equal(store.getState().history.conversations.length, 7);
+    store.getState().askDelete(first.id);
+    await store.getState().confirmDelete();
+    assert.equal(store.getState().history.conversations.some((entry) => entry.id === first.id), false);
+    assert.deepEqual([store.getState().conversation, store.getState().turns.length, store.getState().confirming], [null, 0, null]);
+    await host.close();
   });
 });

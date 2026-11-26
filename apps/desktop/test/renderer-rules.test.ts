@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { segmentsOf, splitTail } from "../src/renderer/chat/prose.ts";
+import { advanceReveal, revealProse, segmentsOf, textLength } from "../src/renderer/chat/prose.ts";
+import { MOTION, motionVars } from "../src/renderer/motion.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/renderer");
 
@@ -49,8 +50,49 @@ describe("prose segments", () => {
     assert.equal(segments[0]?.kind === "cite" && segments[0].word, "Dasar");
   });
 
-  it("fades the last four words of a streaming tail", () => {
-    assert.deepEqual(splitTail("satu dua tiga empat lima enam"), { lead: "satu dua", tail: " tiga empat lima enam" });
-    assert.deepEqual(splitTail("dua kata"), { lead: "", tail: "dua kata" });
+
+  it("shows words whole and a citation only after the words before it", () => {
+    const prose = [{ kind: "text" as const, text: "Kompos boleh dari daun " }, cite(["a#1"]), { kind: "text" as const, text: "dan jerami." }];
+    assert.deepEqual(revealProse(prose, 0), []);
+    assert.deepEqual(revealProse(prose, 9), [{ kind: "text", text: "Kompos " }]);
+    assert.deepEqual(revealProse(prose, 18), [{ kind: "text", text: "Kompos boleh dari " }]);
+    assert.deepEqual(revealProse(prose, 23), [{ kind: "text", text: "Kompos boleh dari daun " }, cite(["a#1"])]);
+    assert.deepEqual(revealProse(prose, 500), prose);
+    assert.equal(textLength(prose), 34);
+  });
+
+  it("advances at the configured pace and never past what has arrived, even after a long pause", () => {
+    assert.equal(advanceReveal(0, 100, 100, 90), 9);
+    assert.equal(advanceReveal(95, 100, 100, 90), 100);
+    assert.equal(advanceReveal(0, 100, 5000, 90), 9);
+  });
+});
+
+describe("the motion config", () => {
+  it("has exactly the keys the tuner exports, so its JSON can be pasted over it", () => {
+    assert.deepEqual(Object.keys(MOTION).sort(), [
+      "cardStaggerMs", "citeResolveMs", "easing", "fieldEnterMs", "fieldOffsetPx", "headlineEnterMs", "headlineOffsetPx", "headlineSettleMs", "headlineVerifyInk",
+      "restartFadeInMs", "restartFadeOutMs", "skeletonShimmerMs", "skeletonSwapMs", "sourcesEnterMs", "sourcesOffsetPx", "sourcesStaggerMs", "textRevealCps",
+      "thinkingPulseMs", "verifyPillFadeMs", "wordFadeMs",
+    ]);
+  });
+
+  it("ships the approved values", () => {
+    assert.deepEqual(MOTION, {
+      easing: [0.2, 0.7, 0.2, 1], thinkingPulseMs: 1600, sourcesEnterMs: 200, sourcesStaggerMs: 40, sourcesOffsetPx: 8, citeResolveMs: 160, headlineEnterMs: 260, headlineOffsetPx: 4,
+      headlineVerifyInk: 75, headlineSettleMs: 200, verifyPillFadeMs: 200, textRevealCps: 90, wordFadeMs: 120, fieldEnterMs: 220, fieldOffsetPx: 6, cardStaggerMs: 60,
+      skeletonShimmerMs: 1400, skeletonSwapMs: 180, restartFadeOutMs: 200, restartFadeInMs: 240,
+    });
+  });
+
+  it("turns every key but the reveal rate into a CSS variable, and a reduced setting drops movement but keeps the fades", () => {
+    const full = motionVars(MOTION, false);
+    assert.equal(full["--m-ease"], "cubic-bezier(0.2, 0.7, 0.2, 1)");
+    assert.equal(full["--m-sources-offset"], "8px");
+    assert.equal(full["--m-headline-settle"], "200ms");
+    assert.equal(Object.keys(full).length, 19);
+    const reduced = motionVars(MOTION, true);
+    assert.deepEqual([reduced["--m-sources-offset"], reduced["--m-headline-offset"], reduced["--m-field-offset"]], ["0px", "0px", "0px"]);
+    assert.deepEqual([reduced["--m-headline-settle"], reduced["--m-word-fade"], reduced["--m-verify-fade"]], ["200ms", "120ms", "200ms"]);
   });
 });

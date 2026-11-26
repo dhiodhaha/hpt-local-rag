@@ -1,6 +1,6 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
-import type { AnswerEvent, AskCall, ConversationId, HptClient, PassageId, Scope } from "@hpt/server/client";
-import { emptyRun, reduceRun, type Run } from "./run.ts";
+import type { AnswerEvent, AskCall, ConversationId, ConversationSummary, HptClient, OpenedTurn, PassageId, Scope, SearchResult } from "@hpt/server/client";
+import { emptyRun, reduceRun, storedRun, type Run } from "./run.ts";
 
 /**
  * UI state, and only UI state. Zustand because it is small, lives outside React (so a test can drive it with a fake client) and
@@ -19,7 +19,16 @@ export type Turn = {
   /** The model id the person picked for this question, or null for the default route. */
   readonly requested: string | null;
   readonly run: Run;
+  readonly fresh: boolean;
 };
+
+export type Screen = "chat" | "all";
+
+export type History = { readonly state: "loading" | "ready" | "failed"; readonly conversations: readonly ConversationSummary[] };
+
+export type Search = { readonly open: boolean; readonly query: string; readonly settled: string | null; readonly result: SearchResult | null };
+
+export type RowMenu = { readonly conversation: ConversationId; readonly x: number; readonly y: number };
 
 export type ChatState = {
   /** null until the first ask of a conversation resolves, then the host's id. */
@@ -30,6 +39,13 @@ export type ChatState = {
   readonly choice: string | null;
   /** The passage a CiteMark or Sumber card has open. */
   readonly openSource: PassageId | null;
+  readonly screen: Screen;
+  readonly history: History;
+  readonly search: Search;
+  readonly menu: RowMenu | null;
+  readonly renaming: ConversationId | null;
+  readonly confirming: ConversationSummary | null;
+  readonly opening: ConversationId | null;
 };
 
 export type ChatActions = {
@@ -43,6 +59,20 @@ export type ChatActions = {
   /** Asks the last question again after a failed or withheld answer. */
   retry(): void;
   newConversation(): void;
+  refreshHistory(): Promise<void>;
+  openConversation(id: ConversationId): Promise<void>;
+  showAll(): void;
+  openSearch(): void;
+  closeSearch(): void;
+  setQuery(query: string): void;
+  openMenu(menu: RowMenu): void;
+  closeMenu(): void;
+  startRename(id: ConversationId): void;
+  cancelRename(): void;
+  commitRename(id: ConversationId, title: string): Promise<void>;
+  askDelete(id: ConversationId): void;
+  cancelDelete(): void;
+  confirmDelete(): Promise<void>;
 };
 
 export type ChatStore = StoreApi<ChatState & ChatActions>;
@@ -95,9 +125,19 @@ export function eventBuffer(apply: (key: string, events: readonly AnswerEvent[])
   };
 }
 
-export function createChatStore(client: HptClient, options: { newKey?: () => string; schedule?: Scheduler; now?: () => number } = {}): ChatStore {
+export const SEARCH_DELAY_MS = 150;
+
+const turnOfStored = (stored: OpenedTurn): Turn => ({ key: stored.id, question: stored.question, at: Date.parse(stored.at), scope: stored.scope, requested: null, run: storedRun(stored), fresh: false });
+
+const NO_SEARCH: Search = { open: false, query: "", settled: null, result: null };
+
+export type StoreOptions = { newKey?: () => string; schedule?: Scheduler; now?: () => number; searchDelayMs?: number };
+
+export function createChatStore(client: HptClient, options: StoreOptions = {}): ChatStore {
   const newKey = options.newKey ?? (() => crypto.randomUUID());
   const now = options.now ?? Date.now;
+  const searchDelayMs = options.searchDelayMs ?? SEARCH_DELAY_MS;
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let running: { readonly key: string; call: AskCall | null; cancelled: boolean } | null = null;
   let previous: AskCall | null = null;
 
@@ -121,7 +161,10 @@ export function createChatStore(client: HptClient, options: { newKey?: () => str
         entry.call = call;
         previous = call;
         call.done.then(
-          (result) => set({ conversation: result.conversation }),
+          (result) => {
+            set({ conversation: result.conversation });
+            void get().refreshHistory();
+          },
           () => {},
         );
       };
@@ -135,14 +178,21 @@ export function createChatStore(client: HptClient, options: { newKey?: () => str
       draft: "",
       choice: null,
       openSource: null,
+      screen: "chat",
+      history: { state: "loading", conversations: [] },
+      search: NO_SEARCH,
+      menu: null,
+      renaming: null,
+      confirming: null,
+      opening: null,
       setDraft: (draft) => set({ draft }),
       chooseModel: (choice) => set({ choice }),
       selectSource: (id) => set({ openSource: id }),
       send(question) {
         const text = question.trim();
         if (text === "" || isBusy(get())) return;
-        const turn: Turn = { key: newKey(), question: text, at: now(), scope: null, requested: get().choice, run: emptyRun() };
-        set((state) => ({ turns: [...state.turns, turn], draft: "", openSource: null }));
+        const turn: Turn = { key: newKey(), question: text, at: now(), scope: null, requested: get().choice, run: emptyRun(), fresh: true };
+        set((state) => ({ turns: [...state.turns, turn], draft: "", openSource: null, screen: "chat" }));
         start(turn);
       },
       cancel() {
@@ -166,7 +216,93 @@ export function createChatStore(client: HptClient, options: { newKey?: () => str
       },
       newConversation() {
         if (isBusy(get())) return;
-        set({ conversation: null, turns: [], draft: "", openSource: null });
+        clearTimeout(searchTimer);
+        set({ conversation: null, turns: [], draft: "", openSource: null, screen: "chat", search: NO_SEARCH, menu: null });
+      },
+      async refreshHistory() {
+        try {
+          const { conversations } = await client.request("list", null);
+          set({ history: { state: "ready", conversations } });
+        } catch {
+          set((state) => ({ history: { state: "failed", conversations: state.history.conversations } }));
+        }
+      },
+      async openConversation(id) {
+        const state = get();
+        if (isBusy(state)) return;
+        if (state.conversation === id && state.screen === "chat") {
+          set({ search: NO_SEARCH, menu: null });
+          return;
+        }
+        set({ opening: id });
+        try {
+          const opened = await client.request("open", { conversation: id });
+          if (get().opening !== id) return;
+          set({ conversation: id, turns: opened.turns.map(turnOfStored), draft: "", openSource: null, screen: "chat", search: NO_SEARCH, menu: null, opening: null });
+        } catch {
+          set({ opening: null });
+          void get().refreshHistory();
+        }
+      },
+      showAll() {
+        set({ screen: "all", search: NO_SEARCH, menu: null });
+      },
+      openSearch() {
+        set((state) => ({ search: { ...state.search, open: true }, menu: null }));
+      },
+      closeSearch() {
+        clearTimeout(searchTimer);
+        set({ search: NO_SEARCH });
+      },
+      setQuery(query) {
+        clearTimeout(searchTimer);
+        set((state) => ({ search: { ...state.search, query } }));
+        if (query.trim() === "") {
+          set((state) => ({ search: { ...state.search, settled: null, result: null } }));
+          return;
+        }
+        searchTimer = setTimeout(() => {
+          client.request("search", { query }).then(
+            (result) => {
+              if (get().search.query === query) set((state) => ({ search: { ...state.search, settled: query, result } }));
+            },
+            () => {},
+          );
+        }, searchDelayMs);
+      },
+      openMenu: (menu) => set({ menu }),
+      closeMenu: () => set({ menu: null }),
+      startRename: (id) => set({ renaming: id, menu: null }),
+      cancelRename: () => set({ renaming: null }),
+      async commitRename(id, title) {
+        set({ renaming: null });
+        try {
+          const { conversation } = await client.request("rename", { conversation: id, title });
+          set((state) => ({ history: { ...state.history, conversations: state.history.conversations.map((entry) => (entry.id === id ? conversation : entry)) } }));
+          if (get().search.query !== "") get().setQuery(get().search.query);
+        } catch {
+          void get().refreshHistory();
+        }
+      },
+      askDelete(id) {
+        const found = get().history.conversations.find((entry) => entry.id === id);
+        set({ confirming: found ?? null, menu: null });
+      },
+      cancelDelete: () => set({ confirming: null }),
+      async confirmDelete() {
+        const target = get().confirming;
+        if (target === null) return;
+        try {
+          await client.request("remove", { conversation: target.id });
+        } catch {
+          set({ confirming: null });
+          void get().refreshHistory();
+          return;
+        }
+        set({ confirming: null });
+        if (get().conversation === target.id) get().newConversation();
+        await get().refreshHistory();
+        if (get().search.query !== "") get().setQuery(get().search.query);
       },
     };
   });
