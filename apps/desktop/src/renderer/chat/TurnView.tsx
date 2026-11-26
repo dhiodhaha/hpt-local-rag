@@ -117,7 +117,7 @@ export function TurnView({ turn, latest, active, onCite, onPick, onRetry, onCanc
       <div style={BUBBLE_STYLE}>{turn.question}</div>
     </div>
   );
-  const answer = view.kind === "answer" ? <AnswerCardView card={view.card} context={context} revealOnArrival={turn.fresh && run.outcome === null} /> : null;
+  const answer = view.kind === "answer" ? <AnswerCardView card={view.card} context={context} revealOnArrival={turn.fresh && run.outcome === null} settled={run.summaryDone} /> : null;
 
   if (!latest && view.kind === "answer" && view.card.finished) {
     const { headline } = view.card;

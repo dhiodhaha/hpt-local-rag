@@ -181,11 +181,13 @@ export type AnswerCardViewProps = {
   card: AnswerCard;
   context: CardContext;
   revealOnArrival?: boolean;
+  /** The summary has fully arrived and passed its checks: the rest of it catches up. */
+  settled?: boolean;
 };
 
-export function AnswerCardView({ card, context, revealOnArrival = false }: AnswerCardViewProps) {
+export function AnswerCardView({ card, context, revealOnArrival = false, settled = true }: AnswerCardViewProps) {
   const hasReference = card.unverified.length > 0;
-  const { prose, complete, animated } = useReveal(card.summary, revealOnArrival);
+  const { prose, complete, animated } = useReveal(card.summary, revealOnArrival, settled);
   const showSkeleton = card.headline === null && !hasReference;
   return (
     <>

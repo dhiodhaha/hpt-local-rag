@@ -67,6 +67,14 @@ export function revealProse(spans: Prose, chars: number): Prose {
 
 export const MAX_STEP_MS = 100;
 
+/** Once the answer has arrived and passed its checks, the text still hidden shows within this time. */
+export const CATCH_UP_MS = 400;
+
+/** The reveal rate after the answer is complete: fast enough to finish within CATCH_UP_MS, never slower than the normal rate. */
+export function catchUpCps(remaining: number, cps: number): number {
+  return Math.max(cps, (Math.max(remaining, 0) * 1000) / CATCH_UP_MS);
+}
+
 export function advanceReveal(shown: number, total: number, dtMs: number, cps: number): number {
   return Math.min(total, shown + (cps * Math.min(Math.max(dtMs, 0), MAX_STEP_MS)) / 1000);
 }

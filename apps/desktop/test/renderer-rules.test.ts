@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { advanceReveal, revealProse, segmentsOf, textLength } from "../src/renderer/chat/prose.ts";
+import { advanceReveal, CATCH_UP_MS, catchUpCps, revealProse, segmentsOf, textLength } from "../src/renderer/chat/prose.ts";
 import { MOTION, motionVars } from "../src/renderer/motion.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/renderer");
@@ -65,6 +65,12 @@ describe("prose segments", () => {
     assert.equal(advanceReveal(0, 100, 100, 90), 9);
     assert.equal(advanceReveal(95, 100, 100, 90), 100);
     assert.equal(advanceReveal(0, 100, 5000, 90), 9);
+    assert.equal(catchUpCps(10, 90), 90, "a short remainder keeps the normal rate");
+    assert.equal(catchUpCps(400, 90), 1000, "a long remainder finishes within CATCH_UP_MS");
+    let shown = 0;
+    const cps = catchUpCps(400, 90);
+    for (let ms = 0; ms < CATCH_UP_MS; ms += 16) shown = advanceReveal(shown, 400, 16, cps);
+    assert.ok(shown >= 399, `caught up to ${shown}`);
   });
 });
 
