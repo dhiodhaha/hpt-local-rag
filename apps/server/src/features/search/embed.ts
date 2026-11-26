@@ -57,6 +57,7 @@ export async function loadEmbedder(options: { modelDir: string; allowDownload: b
   };
 }
 
+/** `cached` counts inputs the cache already held. `embedded` counts distinct inputs computed now. */
 export type EmbeddedAll = { vectors: Float32Array[]; cached: number; embedded: number; ms: number };
 
 const BATCH_SIZE = 16;
@@ -73,6 +74,7 @@ export async function embedAll(
   const started = performance.now();
   const hashes = inputs.map(inputHash);
   const known = cache.lookup(embedder.id, hashes);
+  const cached = hashes.filter((hash) => known.has(hash)).length;
   const firstInputOf = new Map<string, string>();
   inputs.forEach((input, index) => {
     const hash = hashes[index] as string;
@@ -90,7 +92,7 @@ export async function embedAll(
   }
   return {
     vectors: hashes.map((hash) => known.get(hash) as Float32Array),
-    cached: inputs.length - missing.length,
+    cached,
     embedded: missing.length,
     ms: performance.now() - started,
   };

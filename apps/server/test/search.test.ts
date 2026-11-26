@@ -14,7 +14,7 @@ let index: HptIndex;
 before(async () => {
   dir = tempDir();
   indexFile = path.join(dir, "hpt.sqlite");
-  await buildIndex({ vaultDir: writeVault(notes), outFile: indexFile });
+  await buildIndex({ vaultDir: writeVault(notes), outFile: indexFile, channels: ["keyword"] });
   index = openIndex({ path: indexFile });
 });
 
@@ -108,7 +108,7 @@ describe("revisions", () => {
     const ref = (passage: typeof older) => ({ id: passage.id, textHash: passage.textHash });
     fs.writeFileSync(revisionsFile, JSON.stringify([{ superseded: ref(older), by: ref(newer) }]));
     const out = path.join(dir, "revised.sqlite");
-    await buildIndex({ vaultDir: writeVault(notes), outFile: out, revisionsFile });
+    await buildIndex({ vaultDir: writeVault(notes), outFile: out, revisionsFile, channels: ["keyword"] });
     const revised = openIndex({ path: out });
     try {
       const passage = revised.getPassages([older.id]).get(older.id);
@@ -119,7 +119,7 @@ describe("revisions", () => {
       revised.close();
     }
     fs.writeFileSync(revisionsFile, JSON.stringify([{ superseded: { id: older.id, textHash: "0000000000000000" }, by: ref(newer) }]));
-    await assert.rejects(buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "stale.sqlite"), revisionsFile }), /expects another text/);
+    await assert.rejects(buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "stale.sqlite"), revisionsFile, channels: ["keyword"] }), /expects another text/);
   });
 });
 

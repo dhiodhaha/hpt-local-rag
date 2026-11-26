@@ -1,4 +1,5 @@
 import type { NoteId } from "../corpus/index.ts";
+import type { Embedder } from "./embed.ts";
 
 declare const passageIdBrand: unique symbol;
 export type PassageId = string & { readonly [passageIdBrand]: true };
@@ -109,6 +110,8 @@ export type IndexInfo = {
   chunkerVersion: number;
   foldVersion: number;
   channels: readonly Channel[];
+  /** Null for a keyword-only index. */
+  embedding: { model: string; dims: number } | null;
   fingerprint: string;
   counts: { notes: number; passages: number; mapPassages: number };
 };
@@ -124,14 +127,33 @@ export type HptIndex = {
 export type BuildOptions = {
   vaultDir: string;
   outFile: string;
+  channels: readonly Channel[];
+  /** Required when `channels` includes "vector". Without an `embedder` the build loads the model and may download it. */
+  embedding?: { cacheFile: string; modelDir: string; embedder?: Embedder };
   revisionsFile?: string;
   onProgress?: (message: string) => void;
 };
 
+export type TokenSummary = { passages: number; overLimit: number; p50: number; p90: number; max: number };
+
+export type EmbeddingReport = {
+  model: string;
+  dims: number;
+  /** Vectors read from the cache and vectors computed by this build. */
+  cached: number;
+  embedded: number;
+  ms: number;
+  /** Tokens per embedder input, before the model truncates it. */
+  tokens: { citable: TokenSummary; map: TokenSummary };
+  cacheBytes: number;
+};
+
 export type BuildReport = {
   fingerprint: string;
+  channels: readonly Channel[];
   ms: number;
   bytes: number;
+  embedding: EmbeddingReport | null;
   counts: { notes: number; passages: number; mapPassages: number; mapLinks: number };
   passagesBySourceType: Record<SourceType, number>;
   wordCount: { p10: number; p50: number; p90: number; max: number };

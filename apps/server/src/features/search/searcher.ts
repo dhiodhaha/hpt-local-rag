@@ -85,12 +85,14 @@ function readInfo(db: Db, path: string): IndexInfo {
     if (meta.get(key) !== String(expected)) throw new IndexUnavailableError(`${path} was built with another ${key}. Run \`pnpm hpt build\`.`);
   }
   const count = (table: string) => get<{ n: number }>(db, `SELECT count(*) AS n FROM ${table}`)?.n ?? 0;
+  const model = meta.get("embedding_model");
   return {
     path,
     schemaVersion: SCHEMA_VERSION,
     chunkerVersion: CHUNKER_VERSION,
     foldVersion: FOLD_VERSION,
     channels: JSON.parse(meta.get("channels") ?? "[]") as Channel[],
+    embedding: model === undefined ? null : { model, dims: Number(meta.get("embedding_dims")) },
     fingerprint: meta.get("fingerprint") ?? "",
     counts: { notes: count("notes"), passages: count("passages"), mapPassages: count("map_passages") },
   };

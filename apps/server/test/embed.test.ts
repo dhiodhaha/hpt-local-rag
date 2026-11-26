@@ -16,7 +16,7 @@ test("a rebuild embeds only the inputs the cache has not seen, and an input that
   const embedder = fakeEmbedder();
   try {
     const first = await embedAll(["kebun tanam", "pasar harga", "kebun tanam"], { embedder, cache });
-    assert.deepEqual([first.embedded, first.cached], [2, 1]);
+    assert.deepEqual([first.embedded, first.cached], [2, 0]);
     assert.equal(first.vectors.length, 3);
     assert.deepEqual(first.vectors[0], first.vectors[2]);
 

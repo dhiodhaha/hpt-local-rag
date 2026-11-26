@@ -59,3 +59,11 @@ CREATE TABLE map_links (
 CREATE VIRTUAL TABLE putusan_fts USING fts5(title, section, body, content = '', tokenize = 'unicode61 remove_diacritics 2');
 CREATE VIRTUAL TABLE map_fts USING fts5(title, section, body, content = '', tokenize = 'unicode61 remove_diacritics 2');
 `;
+
+/** Each vec0 table shares rowids with its passage table. */
+export function vectorSchemaSql(dims: number): string {
+  return `
+CREATE VIRTUAL TABLE putusan_vec USING vec0(embedding float[${dims}] distance_metric=cosine);
+CREATE VIRTUAL TABLE map_vec USING vec0(embedding float[${dims}] distance_metric=cosine);
+`;
+}

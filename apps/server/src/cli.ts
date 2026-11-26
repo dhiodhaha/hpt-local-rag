@@ -6,17 +6,26 @@ import { buildIndex, openIndex, statusOf, type BuildReport, type SearchResult } 
 import { config } from "./shared/config.ts";
 
 const USAGE = `Usage:
-  hpt build [--vault <dir>] [--out <file>]
+  hpt build [--vault <dir>] [--out <file>] [--keyword-only]
   hpt search "<question>" [--limit 10] [--note <note id>] [--json]
   hpt eval retrieval [--out <dir>] [--misses 30]`;
 
 function printBuild(report: BuildReport, outFile: string): void {
   const mb = (report.bytes / 1_048_576).toFixed(1);
-  console.log(`Built ${outFile} in ${(report.ms / 1000).toFixed(1)} s, ${mb} MB, fingerprint ${report.fingerprint.slice(0, 12)}`);
+  console.log(`Built ${outFile} (${report.channels.join(" + ")}) in ${(report.ms / 1000).toFixed(1)} s, ${mb} MB, fingerprint ${report.fingerprint.slice(0, 12)}`);
   console.log(`${report.counts.notes} notes, ${report.counts.passages} citable passages, ${report.counts.mapPassages} map passages, ${report.counts.mapLinks} map links`);
   console.log("Citable passages by source_type:", report.passagesBySourceType);
   const { p10, p50, p90, max } = report.wordCount;
   console.log(`Words per citable passage: p10 ${p10}, p50 ${p50}, p90 ${p90}, max ${max}`);
+  if (report.embedding) {
+    const { embedding } = report;
+    const cacheMb = (embedding.cacheBytes / 1_048_576).toFixed(1);
+    console.log(`Embeddings (${embedding.model}, ${embedding.dims} dims): ${embedding.embedded} computed in ${(embedding.ms / 1000).toFixed(1)} s, ${embedding.cached} from the cache, cache file ${cacheMb} MB`);
+    for (const kind of ["citable", "map"] as const) {
+      const tokens = embedding.tokens[kind];
+      console.log(`Tokens per ${kind} passage: p50 ${tokens.p50}, p90 ${tokens.p90}, max ${tokens.max}; ${tokens.overLimit} of ${tokens.passages} exceed the model's limit`);
+    }
+  }
   console.log(report.drift === null ? "Drift: no earlier comparable index" : `Drift: ${report.drift.added} added, ${report.drift.removed} removed, ${report.drift.changed.length} changed`);
   console.log(`D12a hand-check: ${report.bookSections.length} compiled-book sections and ${report.unmatchedTocTitles.length} notes with unmatched table-of-contents titles are in ${outFile}.report.json`);
 }
@@ -47,11 +56,13 @@ function fail(message: string): number {
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   if (command === "build") {
-    const { values } = parseArgs({ args: rest, options: { vault: { type: "string" }, out: { type: "string" } } });
+    const { values } = parseArgs({ args: rest, options: { vault: { type: "string" }, out: { type: "string" }, "keyword-only": { type: "boolean" } } });
     const outFile = values.out ?? config.indexFile;
     const report = await buildIndex({
       vaultDir: values.vault ?? config.vaultDir,
       outFile,
+      channels: values["keyword-only"] ? ["keyword"] : ["keyword", "vector"],
+      embedding: { cacheFile: config.embeddingCacheFile, modelDir: config.modelDir },
       revisionsFile: config.revisionsFile,
       onProgress: (message) => console.log(message),
     });
