@@ -10,7 +10,7 @@ export const RANK_POLICY = {
   expandTopMap: 20,
   expandLinksPerPassage: 5,
   maxPerNote: 2,
-  evidence: { strongCoverage: 0.6, absentCoverage: 0.34 },
+  evidence: { strongCoverage: 0.6, absentCoverage: 0.34, agreementTop: 5 },
 } as const;
 
 export type RankLookups = {
@@ -117,15 +117,23 @@ export function fuse(lists: readonly ChannelLists[], lookups: RankLookups, limit
   return fused.slice(0, limit);
 }
 
+/** A signal only: it is reported with the level and does not change it until the eval calibrates a threshold. */
+function channelAgreement(fused: readonly Fused[], channels: readonly Channel[]): number | null {
+  const top = fused.slice(0, RANK_POLICY.evidence.agreementTop);
+  if (channels.length < 2 || top.length === 0) return null;
+  const found = (hit: Fused, channel: Channel) => hit.reasons.some((reason) => reason.kind === "direct" && reason.channel === channel);
+  return top.filter((hit) => channels.every((channel) => found(hit, channel))).length / top.length;
+}
+
 /**
  * absent: no hits, or the top hit covers too few of the question's content terms.
  * strong: the top hit is a direct match and covers most of them.
  * weak: everything else.
  */
-export function judgeEvidence(input: { fused: readonly Fused[]; topCoverage: number }): Evidence {
+export function judgeEvidence(input: { fused: readonly Fused[]; topCoverage: number; channels: readonly Channel[] }): Evidence {
   const top = input.fused[0];
   const topIsDirect = top?.reasons.some((reason) => reason.kind === "direct") ?? false;
-  const signals = { topCoverage: input.topCoverage, topIsDirect };
+  const signals = { topCoverage: input.topCoverage, topIsDirect, channelAgreement: channelAgreement(input.fused, input.channels) };
   if (!top || input.topCoverage < RANK_POLICY.evidence.absentCoverage) return { level: "absent", signals };
   if (topIsDirect && input.topCoverage >= RANK_POLICY.evidence.strongCoverage) return { level: "strong", signals };
   return { level: "weak", signals };

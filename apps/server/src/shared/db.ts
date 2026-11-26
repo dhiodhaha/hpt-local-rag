@@ -15,7 +15,13 @@ export type Db = {
 
 export function openDb(file: string, options: { readonly: boolean; vec?: boolean }): Db {
   const db = new Database(file, { readonly: options.readonly, fileMustExist: options.readonly });
-  if (options.vec) sqliteVec.load(db);
+  if (options.vec) {
+    try {
+      sqliteVec.load(db);
+    } catch {
+      // probeCapabilities reports it, so a keyword-only index still opens where the extension does not load.
+    }
+  }
   if (options.readonly) db.exec("PRAGMA query_only = ON");
   return db;
 }

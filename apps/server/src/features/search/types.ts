@@ -79,6 +79,8 @@ export type Evidence = {
     /** Share of the question's content terms found in the top hit's title and text, 0..1. */
     topCoverage: number;
     topIsDirect: boolean;
+    /** Share of the top 5 hits found directly by every searched channel, 0..1. Null when only one channel ran. Not yet part of the level. */
+    channelAgreement: number | null;
   };
 };
 
@@ -91,6 +93,8 @@ export type SearchFilter = {
 export type SearchOptions = {
   limit?: number;
   channels?: readonly Channel[];
+  /** Default true. */
+  linkExpansion?: boolean;
   /** A filter turns link expansion off: only passages that match the filter directly are returned. */
   filter?: SearchFilter;
 };
@@ -101,7 +105,7 @@ export type SearchResult = {
   leads: NoteRef[];
   evidence: Evidence;
   channels: readonly Channel[];
-  ms: { keyword: number; total: number };
+  ms: { keyword: number; embed: number; vector: number; total: number };
 };
 
 export type IndexInfo = {
@@ -139,7 +143,6 @@ export type TokenSummary = { passages: number; overLimit: number; p50: number; p
 export type EmbeddingReport = {
   model: string;
   dims: number;
-  /** Vectors read from the cache and vectors computed by this build. */
   cached: number;
   embedded: number;
   ms: number;
