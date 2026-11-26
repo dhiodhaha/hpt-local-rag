@@ -1,0 +1,13 @@
+{
+  "name": "hpt-rag-local",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "vault:build": "pnpm --filter @hpt/server vault:build",
+    "check:public": "node scripts/check-public-safe.mjs"
+  }
+}
