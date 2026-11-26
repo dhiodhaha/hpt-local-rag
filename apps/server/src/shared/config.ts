@@ -22,8 +22,8 @@ export const answerConfig = {
   tracesDir: path.join(dataDir, "traces"),
   canaryFile: path.join(dataDir, "canary.txt"),
   answer: {
-    model: "claude-sonnet-5-5",
-    effort: "medium",
+    model: "claude-opus-5-5",
+    effort: "low",
     maxExtraToolCalls: 2,
     searchLimit: 10,
     evidenceTokens: 8000,
