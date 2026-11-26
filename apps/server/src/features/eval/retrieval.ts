@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import type { NoteId } from "../corpus/index.ts";
 import { noteIdOf, type Channel, type EvidenceLevel, type HptIndex } from "../search/index.ts";
-import { CUTOFFS, percentile, rankExpected, summarizeCases, type CutoffSummary, type ExpectedRanks } from "./metrics.ts";
+import { percentile, rankExpected, summarizeCases, type CutoffSummary, type ExpectedRanks } from "./metrics.ts";
 
 export type QaCase = { id: string; question: string; expected: NoteId[] };
 
@@ -55,39 +55,75 @@ export function loadCases(jsonl: string, hasPutusan: (noteId: NoteId) => boolean
   }
   return loaded;
 }
-
-export type CaseResult = { id: string; ranks: ExpectedRanks; evidence: EvidenceLevel; ms: number };
+export type CaseResult = {
+  id: string;
+  ranks: ExpectedRanks;
+  evidence: EvidenceLevel;
+  channelAgreement: number | null;
+  ms: number;
+  embedMs: number;
+};
 
 export type EvidenceSplit = Record<EvidenceLevel, number>;
+
+export type Variant = { name: string; channels: readonly Channel[]; linkExpansion: boolean };
+
+export type Spread = { p50: number; p95: number };
+
+export type VariantReport = {
+  variant: Variant;
+  byCutoff: Record<number, CutoffSummary>;
+  mrr: number;
+  evidence: { hit: EvidenceSplit; miss: EvidenceSplit; unreferenced: EvidenceSplit };
+  ms: { total: Spread; embed: Spread | null };
+  results: CaseResult[];
+};
 
 export type RetrievalReport = {
   indexFingerprint: string;
   channels: readonly Channel[];
   cases: number;
   skipped: LoadedCases["skipped"];
-  byCutoff: Record<number, CutoffSummary>;
-  mrr: number;
-  evidence: { hit: EvidenceSplit; miss: EvidenceSplit; unreferenced: EvidenceSplit };
-  ms: { p50: number; p95: number };
-  results: CaseResult[];
+  variants: VariantReport[];
 };
 
 const emptySplit = (): EvidenceSplit => ({ strong: 0, weak: 0, absent: 0 });
 const HIT_LIMIT = 10;
 
-export async function runRetrievalEval(input: { index: HptIndex; qaFile: string }): Promise<RetrievalReport> {
-  const { index } = input;
-  const loaded = loadCases(fs.readFileSync(input.qaFile, "utf8"), (noteId) => index.hasPutusan(noteId));
-  await index.search("shalat", { limit: HIT_LIMIT });
+const CHANNEL_SETS: readonly { name: string; channels: readonly Channel[] }[] = [
+  { name: "keyword", channels: ["keyword"] },
+  { name: "vector", channels: ["vector"] },
+  { name: "hybrid", channels: ["keyword", "vector"] },
+];
+
+export function variantsFor(indexChannels: readonly Channel[]): Variant[] {
+  return CHANNEL_SETS.filter((set) => set.channels.every((channel) => indexChannels.includes(channel))).flatMap((set) => [
+    { name: set.name, channels: set.channels, linkExpansion: true },
+    { name: `${set.name}, no links`, channels: set.channels, linkExpansion: false },
+  ]);
+}
+
+const spreadOf = (values: readonly number[]): Spread => ({ p50: percentile(values, 0.5), p95: percentile(values, 0.95) });
+
+async function runVariant(index: HptIndex, loaded: LoadedCases, variant: Variant): Promise<VariantReport> {
+  const search = (question: string) => index.search(question, { limit: HIT_LIMIT, channels: variant.channels, linkExpansion: variant.linkExpansion });
+  await search("shalat");
 
   const results: CaseResult[] = [];
   for (const qaCase of loaded.cases) {
-    const result = await index.search(qaCase.question, { limit: HIT_LIMIT });
+    const result = await search(qaCase.question);
     const hitNotes = result.hits.map((hit) => [hit.passage.noteId, ...hit.duplicates.map(noteIdOf)]);
-    results.push({ id: qaCase.id, ranks: rankExpected(qaCase.expected, hitNotes), evidence: result.evidence.level, ms: result.ms.total });
+    results.push({
+      id: qaCase.id,
+      ranks: rankExpected(qaCase.expected, hitNotes),
+      evidence: result.evidence.level,
+      channelAgreement: result.evidence.signals.channelAgreement,
+      ms: result.ms.total,
+      embedMs: result.ms.embed,
+    });
   }
   const unreferenced = emptySplit();
-  for (const row of loaded.unreferenced) unreferenced[(await index.search(row.question, { limit: HIT_LIMIT })).evidence.level] += 1;
+  for (const row of loaded.unreferenced) unreferenced[(await search(row.question)).evidence.level] += 1;
 
   const split = (isHit: boolean) => {
     const counts = emptySplit();
@@ -98,48 +134,23 @@ export async function runRetrievalEval(input: { index: HptIndex; qaFile: string 
     return counts;
   };
   const summary = summarizeCases(results);
-  const timings = results.map((result) => result.ms);
   return {
-    indexFingerprint: index.info.fingerprint,
-    channels: index.info.channels,
-    cases: results.length,
-    skipped: loaded.skipped,
+    variant,
     byCutoff: summary.byCutoff,
     mrr: summary.mrr,
     evidence: { hit: split(true), miss: split(false), unreferenced },
-    ms: { p50: percentile(timings, 0.5), p95: percentile(timings, 0.95) },
+    ms: {
+      total: spreadOf(results.map((result) => result.ms)),
+      embed: variant.channels.includes("vector") ? spreadOf(results.map((result) => result.embedMs)) : null,
+    },
     results,
   };
 }
 
-const fixed = (value: number, digits = 3) => value.toFixed(digits);
-
-/** Numbers and ids only. A question or an answer never enters the report, because the report is committed. */
-export function formatReport(report: RetrievalReport, options: { maxMisses: number }): string {
-  const lines: string[] = [];
-  lines.push(`Index fingerprint \`${report.indexFingerprint.slice(0, 12)}\`, channels ${report.channels.join(" + ")}, ${report.cases} labelled conversations.`);
-  lines.push(
-    `Skipped: ${report.skipped.badRows} unreadable rows, ${report.skipped.fullyUnmapped} rows whose references map to no putusan, ${report.skipped.nonCitableReferences} references to concepts, entities or the Quran.`,
-    "",
-    "| k | recall@k | best possible recall@k | hit@k |",
-    "|---|---|---|---|",
-  );
-  for (const k of CUTOFFS) {
-    const row = report.byCutoff[k] as CutoffSummary;
-    lines.push(`| ${k} | ${fixed(row.recall)} | ${fixed(row.ceiling)} | ${fixed(row.hit)} |`);
-  }
-  lines.push("", `MRR ${fixed(report.mrr)}. Search time p50 ${fixed(report.ms.p50, 1)} ms, p95 ${fixed(report.ms.p95, 1)} ms.`);
-
-  lines.push("", "| Evidence level | hit@10 | miss@10 | no references |", "|---|---|---|---|");
-  for (const level of ["strong", "weak", "absent"] as const) {
-    lines.push(`| ${level} | ${report.evidence.hit[level]} | ${report.evidence.miss[level]} | ${report.evidence.unreferenced[level]} |`);
-  }
-
-  const misses = report.results.filter((result) => Object.values(result.ranks).every((rank) => rank === null));
-  lines.push("", `Misses at 10 (${misses.length}). Conversation id, expected notes, evidence level:`);
-  for (const miss of misses.slice(0, options.maxMisses)) {
-    lines.push(`- ${miss.id}, ${Object.keys(miss.ranks).length} expected, ${miss.evidence}`);
-  }
-  if (misses.length > options.maxMisses) lines.push(`- and ${misses.length - options.maxMisses} more in the JSON run output`);
-  return lines.join("\n");
+export async function runRetrievalEval(input: { index: HptIndex; qaFile: string }): Promise<RetrievalReport> {
+  const { index } = input;
+  const loaded = loadCases(fs.readFileSync(input.qaFile, "utf8"), (noteId) => index.hasPutusan(noteId));
+  const variants: VariantReport[] = [];
+  for (const variant of variantsFor(index.info.channels)) variants.push(await runVariant(index, loaded, variant));
+  return { indexFingerprint: index.info.fingerprint, channels: index.info.channels, cases: loaded.cases.length, skipped: loaded.skipped, variants };
 }
