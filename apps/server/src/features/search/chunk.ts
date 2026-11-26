@@ -2,10 +2,20 @@ import { renderWikilinks, type NoteId } from "../corpus/index.ts";
 import { fold, tokens } from "./fold.ts";
 
 /** Bump on any change that can move passage boundaries. Ordinals, and so passage ids, shift with it. */
-export const CHUNKER_VERSION = 1;
+export const CHUNKER_VERSION = 2;
 
-/** Passages stay under `max` so a 512-token embedder does not truncate them later. */
+/** Words alone do not bound the embedder's input: Arabic costs several tokens a word. `TokenBudget` is the binding cap there. */
 export const CHUNK_WORDS = { min: 120, max: 300 } as const;
+
+/** The embedder's limit for one passage, so a chunk is never truncated when it is embedded. */
+export type TokenBudget = {
+  /** The most tokens the embedder reads from one input. */
+  max: number;
+  /** Tokens of an input's title and section label, before any text. */
+  overhead(section: string | null): number;
+  /** Tokens a piece of text adds to an input. Whitespace-separated pieces add up, so a chunk costs its overhead plus its pieces. */
+  tokens(text: string): number;
+};
 
 export type Chunk = {
   /** From 1. */
@@ -226,55 +236,105 @@ function mergeHeadingOnlySections(sections: Section[]): Section[] {
   return merged;
 }
 
-function splitLongParagraph(paragraph: Paragraph, maxWords: number): Paragraph[] {
-  if (paragraph.words <= maxWords) return [paragraph];
+/** What one unit may cost: a unit is at most half a chunk, so packing fills a chunk to within half a unit of its cap. */
+type Cap = { words: number; tokens: number };
+
+type Unit = Paragraph & { tokens: number };
+
+const SENTENCE_BREAK = /(?<=[.!?؟])\s+/;
+const SPLIT_LEVELS: readonly ((text: string) => string[])[] = [
+  (text) => text.split(SENTENCE_BREAK),
+  (text) => text.split(/\s+/).filter(Boolean),
+];
+
+/** Consecutive parts into pieces under the cap. A part over the cap on its own goes to `splitPart`. */
+function packParts(parts: readonly string[], cap: Cap, budget: TokenBudget, splitPart: (part: string) => string[]): string[] {
   const pieces: string[] = [];
   let piece: string[] = [];
-  let pieceWords = 0;
+  let words = 0;
+  let tokens = 0;
   const emit = () => {
     if (piece.length > 0) pieces.push(piece.join(" "));
     piece = [];
-    pieceWords = 0;
+    words = 0;
+    tokens = 0;
   };
-  for (const sentence of paragraph.text.split(/(?<=[.!?؟])\s+/)) {
-    const words = sentence.split(/\s+/).filter(Boolean);
-    if (pieceWords + words.length > maxWords) emit();
-    if (words.length > maxWords) {
-      for (let start = 0; start < words.length; start += maxWords) pieces.push(words.slice(start, start + maxWords).join(" "));
-    } else {
-      piece.push(sentence);
-      pieceWords += words.length;
+  for (const part of parts) {
+    const partWords = countWords(part);
+    const partTokens = budget.tokens(part);
+    if (partWords > cap.words || partTokens > cap.tokens) {
+      emit();
+      pieces.push(...splitPart(part));
+      continue;
     }
+    if (words + partWords > cap.words || tokens + partTokens > cap.tokens) emit();
+    piece.push(part);
+    words += partWords;
+    tokens += partTokens;
   }
   emit();
-  return pieces.map((text) => ({ ...paragraph, text, words: countWords(text) }));
+  return pieces;
 }
 
-function sumWords(paragraphs: readonly Paragraph[]): number {
-  return paragraphs.reduce((total, paragraph) => total + paragraph.words, 0);
+/** Only for a single word that is over the cap alone. Counts do not add up inside a word, so this measures each prefix. */
+function splitCharacters(word: string, cap: Cap, budget: TokenBudget): string[] {
+  const characters = Array.from(word);
+  const pieces: string[] = [];
+  for (let start = 0; start < characters.length; ) {
+    let good = 0;
+    let bad = characters.length - start + 1;
+    while (bad - good > 1) {
+      const middle = Math.floor((good + bad) / 2);
+      if (budget.tokens(characters.slice(start, start + middle).join("")) <= cap.tokens) good = middle;
+      else bad = middle;
+    }
+    if (good === 0) throw new Error("a single character does not fit the token budget");
+    pieces.push(characters.slice(start, start + good).join(""));
+    start += good;
+  }
+  return pieces;
 }
+
+/** Sentences first, then words, then characters, so text is cut at the coarsest boundary that fits. */
+function splitToFit(text: string, cap: Cap, budget: TokenBudget, level = 0): string[] {
+  if (countWords(text) <= cap.words && budget.tokens(text) <= cap.tokens) return [text];
+  const split = SPLIT_LEVELS[level];
+  if (!split) return splitCharacters(text, cap, budget);
+  const parts = split(text);
+  if (parts.length === 1) return splitToFit(text, cap, budget, level + 1);
+  return packParts(parts, cap, budget, (part) => splitToFit(part, cap, budget, level + 1));
+}
+
+function toUnits(paragraph: Paragraph, label: string | null, budget: TokenBudget, overheadOf: (label: string | null) => number): Unit[] {
+  const cap = { words: CHUNK_WORDS.max / 2, tokens: Math.floor((budget.max - overheadOf(label)) / 2) };
+  return splitToFit(paragraph.text, cap, budget).map((text) => {
+    const unit = text === paragraph.text ? paragraph : { ...paragraph, text, words: countWords(text) };
+    return { ...unit, tokens: budget.tokens(text) };
+  });
+}
+
+const sumWords = (paragraphs: readonly Paragraph[]) => paragraphs.reduce((total, paragraph) => total + paragraph.words, 0);
+
+const textOf = (paragraphs: readonly Paragraph[]) => paragraphs.map((paragraph) => paragraph.text).join("\n");
 
 /** Greedy packing. A heading never ends a chunk: it moves to the start of the next one. */
-function pack(units: readonly Paragraph[]): Paragraph[][] {
-  const chunks: Paragraph[][] = [];
-  let current: Paragraph[] = [];
-  let words = 0;
+function pack(units: readonly Unit[], fits: (units: readonly Unit[]) => boolean): Unit[][] {
+  const chunks: Unit[][] = [];
+  let current: Unit[] = [];
   for (const unit of units) {
-    if (current.length > 0 && words + unit.words > CHUNK_WORDS.max) {
+    while (current.length > 0 && !fits([...current, unit])) {
       let keep = current.length;
-      while (keep > 1 && (current[keep - 1] as Paragraph).isHeading) keep -= 1;
+      while (keep > 1 && (current[keep - 1] as Unit).isHeading) keep -= 1;
       chunks.push(current.slice(0, keep));
       current = current.slice(keep);
-      words = sumWords(current);
     }
     current.push(unit);
-    words += unit.words;
   }
   if (current.length > 0) chunks.push(current);
 
   const last = chunks[chunks.length - 1];
   const previous = chunks[chunks.length - 2];
-  if (last && previous && sumWords(last) < CHUNK_WORDS.min / 2 && sumWords(previous) + sumWords(last) <= CHUNK_WORDS.max) {
+  if (last && previous && sumWords(last) < CHUNK_WORDS.min / 2 && fits([...previous, ...last])) {
     chunks.splice(chunks.length - 2, 2, [...previous, ...last]);
   }
   return chunks;
@@ -284,15 +344,25 @@ function pack(units: readonly Paragraph[]): Paragraph[][] {
  * Body to passages. Line-based, because most putusan are PDF text with hard line breaks and almost no markdown
  * headings. Headings come from the table of contents, markdown, KITAB/BAB/PASAL lines and short all-caps lines.
  * Only table-of-contents titles start a new section, so a chunk never spans two sections of a compiled book.
+ * A chunk holds at most `CHUNK_WORDS.max` words and fills at most `budget.max` tokens of the embedder's input.
  */
-export function chunkBody(body: string): ChunkedBody {
+export function chunkBody(body: string, budget: TokenBudget): ChunkedBody {
   const chunks: Chunk[] = [];
   const { sections, unmatchedTocTitles } = toSections(toLines(body));
+  const overheads = new Map<string | null, number>();
+  const overheadOf = (label: string | null) => {
+    if (!overheads.has(label)) overheads.set(label, budget.overhead(label));
+    return overheads.get(label) as number;
+  };
   for (const section of sections) {
-    const units = section.paragraphs.flatMap((paragraph) => splitLongParagraph(paragraph, CHUNK_WORDS.max / 2));
-    for (const paragraphs of pack(units)) {
+    const labelOf = (paragraph: Paragraph) => sectionLabel({ top: section.top, sub: paragraph.sub });
+    const units = section.paragraphs.flatMap((paragraph) => toUnits(paragraph, labelOf(paragraph), budget, overheadOf));
+    const fits = (candidate: readonly Unit[]) =>
+      sumWords(candidate) <= CHUNK_WORDS.max &&
+      overheadOf(labelOf(candidate[0] as Unit)) + candidate.reduce((total, unit) => total + unit.tokens, 0) <= budget.max;
+    for (const paragraphs of pack(units, fits)) {
       const first = paragraphs[0] as Paragraph;
-      const text = paragraphs.map((paragraph) => paragraph.text).join("\n");
+      const text = textOf(paragraphs);
       chunks.push({
         ordinal: chunks.length + 1,
         top: section.top,

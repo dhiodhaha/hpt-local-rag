@@ -89,7 +89,7 @@ describe("comparing channels", () => {
       channels: ["keyword", "vector"],
       embedding: { cacheFile: path.join(dir, "embeddings.sqlite"), modelDir: dir, embedder: fakeEmbedder({ dims: 1024 }) },
     });
-    await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "keyword.sqlite"), channels: ["keyword"] });
+    await buildIndex({ vaultDir: writeVault(notes), outFile: path.join(dir, "keyword.sqlite"), channels: ["keyword"], tokenMeter: fakeEmbedder() });
   });
 
   const evaluate = async (file: string) => {

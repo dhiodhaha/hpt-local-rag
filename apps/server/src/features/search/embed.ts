@@ -9,30 +9,44 @@ export const E5_SMALL = { model: "Xenova/multilingual-e5-small", dtype: "q8", di
 const QUERY_PREFIX = "query: ";
 const PASSAGE_PREFIX = "passage: ";
 
-export type Embedder = {
+/** What the chunker needs from the model: the longest input it reads, and a count of one passage's input. */
+export type TokenMeter = {
+  readonly maxTokens: number;
+  /** Tokens the model would read for a passage input, special tokens included, before it truncates. */
+  tokenCount(input: string): number;
+  /** Tokens a piece of text adds to an input. Whitespace-separated pieces add up, so the chunker can price a chunk from its parts. */
+  textTokens(text: string): number;
+};
+
+export type Embedder = TokenMeter & {
   /** Written into the index and part of every cache key, so a vector only meets vectors of the same model. */
   readonly id: string;
   readonly dims: number;
-  readonly maxTokens: number;
   /** L2-normalised, so a dot product is the cosine. */
   embedQuery(question: string): Promise<Float32Array>;
   embedPassages(inputs: readonly string[]): Promise<Float32Array[]>;
-  /** Tokens the model would read for a passage input, special tokens included, before it truncates. */
-  tokenCount(input: string): number;
 };
 
 export type EmbedderSource = () => Promise<Embedder>;
 
 export class ModelUnavailableError extends Error {}
 
+/** A section label is two headings of at most 14 words. A longer one is prose that a markdown heading swallowed, and it would fill the model's input. */
+const SECTION_INPUT_WORDS = 28;
+
 export function passageInput(title: string, section: string | null, text: string): string {
-  return [title, section, text].filter((part) => part !== null && part !== "").join("\n");
+  const words = section?.split(/\s+/) ?? [];
+  const label = words.length > SECTION_INPUT_WORDS ? words.slice(0, SECTION_INPUT_WORDS).join(" ") : section;
+  return [title, label, text].filter((part) => part !== null && part !== "").join("\n");
 }
 
 const inputHash = (input: string) => createHash("sha256").update(input).digest("hex");
 
-export async function loadEmbedder(options: { modelDir: string; allowDownload: boolean }): Promise<Embedder> {
-  const { pipeline, env } = await import("@huggingface/transformers");
+type ModelSource = { modelDir: string; allowDownload: boolean };
+
+async function loadTransformers(options: ModelSource) {
+  const transformers = await import("@huggingface/transformers");
+  const { env } = transformers;
   env.allowLocalModels = true;
   env.localModelPath = options.modelDir;
   env.cacheDir = options.modelDir;
@@ -41,6 +55,27 @@ export async function loadEmbedder(options: { modelDir: string; allowDownload: b
   if (!options.allowDownload && !fs.existsSync(modelDir)) {
     throw new ModelUnavailableError(`${modelDir} is missing. Run \`pnpm hpt build\` once with a network connection.`);
   }
+  return transformers;
+}
+
+type Tokenizer = { encode(text: string, options?: { add_special_tokens?: boolean }): number[] };
+
+function metersOf(tokenizer: Tokenizer): Pick<TokenMeter, "tokenCount" | "textTokens"> {
+  return {
+    tokenCount: (input) => tokenizer.encode(`${PASSAGE_PREFIX}${input}`).length,
+    textTokens: (text) => tokenizer.encode(text, { add_special_tokens: false }).length,
+  };
+}
+
+/** The model's tokenizer alone, for a build that embeds nothing but still splits passages to fit the model. */
+export async function loadTokenMeter(options: ModelSource): Promise<TokenMeter> {
+  const { AutoTokenizer } = await loadTransformers(options);
+  const tokenizer = await AutoTokenizer.from_pretrained(E5_SMALL.model);
+  return { maxTokens: E5_SMALL.maxTokens, ...metersOf(tokenizer) };
+}
+
+export async function loadEmbedder(options: ModelSource): Promise<Embedder> {
+  const { pipeline } = await loadTransformers(options);
   const extractor = await pipeline("feature-extraction", E5_SMALL.model, { dtype: E5_SMALL.dtype });
   const embed = async (inputs: string[]): Promise<Float32Array[]> => {
     const output = await extractor(inputs, { pooling: "mean", normalize: true });
@@ -53,7 +88,7 @@ export async function loadEmbedder(options: { modelDir: string; allowDownload: b
     maxTokens: E5_SMALL.maxTokens,
     embedQuery: async (question) => (await embed([`${QUERY_PREFIX}${question}`]))[0] as Float32Array,
     embedPassages: (inputs) => embed(inputs.map((input) => `${PASSAGE_PREFIX}${input}`)),
-    tokenCount: (input) => extractor.tokenizer.encode(`${PASSAGE_PREFIX}${input}`).length,
+    ...metersOf(extractor.tokenizer),
   };
 }
 

@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { readVault, type NoteId, type VaultNote } from "../corpus/index.ts";
 import { all, get, inTransaction, openDb, vectorBlob, type Db } from "../../shared/db.ts";
-import { chunkBody, sectionLabel, CHUNKER_VERSION, type Chunk } from "./chunk.ts";
-import { embedAll, loadEmbedder, passageInput, type Embedder } from "./embed.ts";
+import { chunkBody, sectionLabel, CHUNK_WORDS, CHUNKER_VERSION, type Chunk, type TokenBudget } from "./chunk.ts";
+import { embedAll, loadEmbedder, loadTokenMeter, passageInput, type Embedder, type TokenMeter } from "./embed.ts";
 import { openEmbeddingCache } from "./embedding-cache.ts";
 import { fold, FOLD_VERSION } from "./fold.ts";
 import { describeNote, describePassage, UnknownFolderError, type NoteMeta, type PassageMeta } from "./putusan-meta.ts";
@@ -18,7 +18,8 @@ import {
   type EmbeddingReport,
   type PassageId,
   type SourceType,
-  type TokenSummary,
+  type SizeReport,
+  type SizeSummary,
 } from "./types.ts";
 
 export class BuildError extends Error {
@@ -49,14 +50,18 @@ function putusanTarget(target: NoteId, putusanIds: ReadonlySet<NoteId>): NoteId 
   return cardOf !== null && putusanIds.has(cardOf) ? cardOf : null;
 }
 
-export function planVault(notes: readonly VaultNote[]): NotePlan[] {
+function budgetFor(meter: TokenMeter, title: string): TokenBudget {
+  return { max: meter.maxTokens, overhead: (section) => meter.tokenCount(passageInput(title, section, "")), tokens: meter.textTokens };
+}
+
+export function planVault(notes: readonly VaultNote[], meter: TokenMeter): NotePlan[] {
   const ids = new Set(notes.map((note) => note.id));
   const putusanIds = new Set(notes.filter((note) => note.collection === "putusan").map((note) => note.id));
   const problems: string[] = [];
   const plans: NotePlan[] = [];
 
   for (const note of notes) {
-    const { chunks, unmatchedTocTitles } = chunkBody(note.body);
+    const { chunks, unmatchedTocTitles } = chunkBody(note.body, budgetFor(meter, note.title));
     for (const target of new Set(chunks.flatMap((chunk) => chunk.links))) {
       if (!ids.has(target)) problems.push(`${note.id}: link to ${target} resolves to no note`);
     }
@@ -303,7 +308,9 @@ function percentile(sorted: readonly number[], share: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))] ?? 0;
 }
 
-function embeddingInputs(plans: readonly NotePlan[]): { citable: string[]; map: string[] } {
+type EmbeddingInputs = { citable: string[]; map: string[] };
+
+function embeddingInputs(plans: readonly NotePlan[]): EmbeddingInputs {
   const citable: string[] = [];
   const map: string[] = [];
   for (const plan of plans) {
@@ -316,7 +323,7 @@ function embeddingInputs(plans: readonly NotePlan[]): { citable: string[]; map: 
   return { citable, map };
 }
 
-function tokenSummary(counts: readonly number[], limit: number): TokenSummary {
+function summarizeSizes(counts: readonly number[], limit: number): SizeSummary {
   const sorted = [...counts].sort((a, b) => a - b);
   return {
     passages: counts.length,
@@ -325,6 +332,15 @@ function tokenSummary(counts: readonly number[], limit: number): TokenSummary {
     p90: percentile(sorted, 0.9),
     max: sorted[sorted.length - 1] ?? 0,
   };
+}
+
+/** The chunker guarantees every input fits, so an input over the limit means the chunker and the meter disagree. */
+function measureTokens(inputs: EmbeddingInputs, meter: TokenMeter): SizeReport {
+  const summarize = (list: readonly string[]) => summarizeSizes(list.map((input) => meter.tokenCount(input)), meter.maxTokens);
+  const tokens = { limit: meter.maxTokens, citable: summarize(inputs.citable), map: summarize(inputs.map) };
+  const over = tokens.citable.overLimit + tokens.map.overLimit;
+  if (over > 0) throw new BuildError([`${over} passages are over the ${meter.maxTokens}-token limit, so the model would truncate them`]);
+  return tokens;
 }
 
 type VectorBuild = { embedder: Embedder; cacheFile: string };
@@ -336,34 +352,40 @@ async function vectorBuildOf(options: BuildOptions): Promise<VectorBuild | null>
   return { cacheFile, embedder: options.embedding.embedder ?? (await loadEmbedder({ modelDir, allowDownload: true })) };
 }
 
-async function embedPlans(plans: readonly NotePlan[], { embedder, cacheFile }: VectorBuild, log: (message: string) => void): Promise<{ vectors: PlanVectors; report: EmbeddingReport }> {
-  const inputs = embeddingInputs(plans);
+async function tokenMeterOf(options: BuildOptions, vector: VectorBuild | null): Promise<TokenMeter> {
+  if (options.tokenMeter !== undefined) return options.tokenMeter;
+  if (vector !== null) return vector.embedder;
+  if (options.embedding === undefined) throw new Error("a build needs a token meter: pass tokenMeter or embedding options");
+  return loadTokenMeter({ modelDir: options.embedding.modelDir, allowDownload: true });
+}
+
+async function embedInputs(inputs: EmbeddingInputs, { embedder, cacheFile }: VectorBuild, log: (message: string) => void): Promise<{ vectors: PlanVectors; report: EmbeddingReport }> {
   const cache = openEmbeddingCache(cacheFile);
   try {
     log(`embedding ${inputs.citable.length + inputs.map.length} passages with ${embedder.id}`);
     const embedded = await embedAll([...inputs.citable, ...inputs.map], { embedder, cache, onProgress: log });
     const vectors = { citable: embedded.vectors.slice(0, inputs.citable.length), map: embedded.vectors.slice(inputs.citable.length) };
-    const tokens = {
-      citable: tokenSummary(inputs.citable.map((input) => embedder.tokenCount(input)), embedder.maxTokens),
-      map: tokenSummary(inputs.map.map((input) => embedder.tokenCount(input)), embedder.maxTokens),
-    };
-    return { vectors, report: { model: embedder.id, dims: embedder.dims, cached: embedded.cached, embedded: embedded.embedded, ms: embedded.ms, tokens, cacheBytes: fs.statSync(cacheFile).size } };
+    return { vectors, report: { model: embedder.id, dims: embedder.dims, cached: embedded.cached, embedded: embedded.embedded, ms: embedded.ms, cacheBytes: fs.statSync(cacheFile).size } };
   } finally {
     cache.close();
   }
 }
 
-function summarize(plans: readonly NotePlan[]): Pick<BuildReport, "passagesBySourceType" | "wordCount" | "bookSections" | "unmatchedTocTitles"> {
+function summarize(plans: readonly NotePlan[]): Pick<BuildReport, "passagesBySourceType" | "words" | "bookSections" | "unmatchedTocTitles"> {
   const passagesBySourceType = Object.fromEntries(SOURCE_TYPES.map((type) => [type, 0])) as Record<SourceType, number>;
-  const words: number[] = [];
+  const citableWords: number[] = [];
+  const mapWords: number[] = [];
   const bookSections: BuildReport["bookSections"] = [];
   const unmatchedTocTitles: BuildReport["unmatchedTocTitles"] = [];
   for (const plan of plans) {
-    if (plan.kind !== "putusan") continue;
+    if (plan.kind === "map") {
+      mapWords.push(...plan.chunks.map(({ chunk }) => chunk.wordCount));
+      continue;
+    }
     if (plan.unmatchedTocTitles > 0) unmatchedTocTitles.push({ noteId: plan.note.id, count: plan.unmatchedTocTitles });
     for (const { chunk, section, meta } of plan.passages) {
       passagesBySourceType[meta.sourceType] += 1;
-      words.push(chunk.wordCount);
+      citableWords.push(chunk.wordCount);
       if (meta.parent === null) continue;
       const last = bookSections[bookSections.length - 1];
       if (last && last.noteId === plan.note.id && last.section === (chunk.top ?? section)) {
@@ -373,10 +395,9 @@ function summarize(plans: readonly NotePlan[]): Pick<BuildReport, "passagesBySou
       }
     }
   }
-  words.sort((a, b) => a - b);
   return {
     passagesBySourceType,
-    wordCount: { p10: percentile(words, 0.1), p50: percentile(words, 0.5), p90: percentile(words, 0.9), max: words[words.length - 1] ?? 0 },
+    words: { limit: CHUNK_WORDS.max, citable: summarizeSizes(citableWords, CHUNK_WORDS.max), map: summarizeSizes(mapWords, CHUNK_WORDS.max) },
     bookSections,
     unmatchedTocTitles,
   };
@@ -394,11 +415,14 @@ export async function buildIndex(options: BuildOptions): Promise<BuildReport> {
   log("reading the vault");
   const notes = await readVault(options.vaultDir);
   log(`chunking ${notes.length} notes`);
-  const plans = planVault(notes);
-  const revisions = readRevisions(options.revisionsFile);
   const vector = await vectorBuildOf(options);
+  const meter = await tokenMeterOf(options, vector);
+  const plans = planVault(notes, meter);
+  const revisions = readRevisions(options.revisionsFile);
+  const inputs = embeddingInputs(plans);
+  const tokens = measureTokens(inputs, meter);
   const fingerprint = fingerprintOf(plans, vector?.embedder ?? null);
-  const embedded = vector ? await embedPlans(plans, vector, log) : null;
+  const embedded = vector ? await embedInputs(inputs, vector, log) : null;
 
   fs.mkdirSync(path.dirname(options.outFile), { recursive: true });
   fs.rmSync(nextFile, { force: true });
@@ -438,6 +462,7 @@ export async function buildIndex(options: BuildOptions): Promise<BuildReport> {
       mapLinks,
     },
     ...summary,
+    tokens,
     drift: driftAgainst(before, after),
   };
   fs.writeFileSync(`${options.outFile}.report.json`, JSON.stringify(report, null, 2));

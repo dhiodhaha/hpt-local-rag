@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { TokenBudget } from "../src/features/search/chunk.ts";
 
 const VOCABULARY = [
   "kebun", "tanam", "musim", "panen", "pasar", "harga", "timbang", "sewa", "lumbung", "benih", "hujan", "angin",
@@ -62,3 +63,13 @@ export function writeVault(notes: readonly FixtureNote[]): string {
 export function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "hpt-test-"));
 }
+
+/** Every word costs `perWord` tokens and the title with its section costs `overhead`, so a heavy script can be modelled without a tokenizer. */
+export function wordBudget(options: { max?: number; perWord?: number; overhead?: number } = {}): TokenBudget {
+  const perWord = options.perWord ?? 1;
+  const overhead = options.overhead ?? 0;
+  const words = (text: string) => text.split(/\s+/).filter(Boolean).length;
+  return { max: options.max ?? 100_000, overhead: (section) => overhead + words(section ?? "") * perWord, tokens: (text) => words(text) * perWord };
+}
+
+export const costOf = (budget: TokenBudget, section: string | null, text: string) => budget.overhead(section) + budget.tokens(text);

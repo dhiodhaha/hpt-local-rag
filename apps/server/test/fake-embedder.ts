@@ -32,5 +32,6 @@ export function fakeEmbedder(options: { dims?: number; maxTokens?: number; id?: 
       return inputs.map(vectorOf);
     },
     tokenCount: (input) => tokens(fold(input)).length + 2,
+    textTokens: (text) => tokens(fold(text)).length,
   };
 }
