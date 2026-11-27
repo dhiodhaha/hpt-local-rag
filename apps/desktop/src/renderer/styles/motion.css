@@ -18,6 +18,11 @@
     opacity: 0;
   }
 }
+@keyframes m-fade-out {
+  to {
+    opacity: 0;
+  }
+}
 @keyframes m-cite {
   from {
     background-color: transparent;
@@ -65,29 +70,9 @@
   animation-delay: calc(min(var(--i), 5) * var(--m-card-stagger));
 }
 
-.m-open .it-card {
-  --i: 0;
-  transition-property: opacity, transform;
-  transition-duration: var(--m-field-enter);
-  transition-timing-function: var(--m-ease);
-  transition-delay: calc(min(var(--i), 5) * var(--m-card-stagger));
-  @starting-style {
-    opacity: 0;
-    transform: translateY(var(--m-field-offset));
-  }
-}
-
-.m-surface {
-  animation: m-fade var(--m-field-enter) var(--m-ease) both;
-}
-
 .m-headline {
   --rise-y: var(--m-headline-offset);
   animation: m-rise var(--m-headline-enter) var(--m-ease) both;
-  transition: color var(--m-headline-settle) ease-out;
-}
-.m-headline[data-verifying="true"] {
-  color: color-mix(in srgb, var(--color-ink) calc(var(--m-headline-ink) * 1%), var(--color-surface));
 }
 
 .m-word {
@@ -159,6 +144,37 @@
 .swap-sk[data-closing="true"] {
   opacity: 0;
   pointer-events: none;
+}
+
+/* One screen replaces another: the conversation fades out for the restart time, then the next screen fades in. */
+.cv-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  animation: m-fade var(--m-restart-in) var(--m-ease);
+}
+.cv-screen[data-leaving="true"] {
+  animation: m-fade-out var(--m-restart-out) var(--m-ease) both;
+  pointer-events: none;
+}
+
+/* The card a citation opened is lit once and fades back. Only opacity changes, so reduced motion keeps it as it is. */
+.scard {
+  position: relative;
+}
+.scard-head,
+.scard-more {
+  position: relative;
+  z-index: 1;
+}
+.scard-hit {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-accent-soft);
+  pointer-events: none;
+  animation: m-fade-out var(--m-cite) var(--m-ease) both;
 }
 
 .m-hold {

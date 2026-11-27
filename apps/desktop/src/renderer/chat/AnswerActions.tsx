@@ -1,5 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
-import { ActionRow, Disclaimer } from "../ui/index.ts";
+import { useState, type ReactNode } from "react";
 import { COPY } from "./copy.ts";
 
 type Rating = "good" | "bad" | null;
@@ -20,7 +19,7 @@ const COPY_ICON = icon(
   </>,
 );
 
-export function AnswerActions({ text, index, disclaimer }: { text: string; index: number; disclaimer: boolean }) {
+export function AnswerActions({ text }: { text: string }) {
   const [rating, setRating] = useState<Rating>(null);
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -30,32 +29,16 @@ export function AnswerActions({ text, index, disclaimer }: { text: string; index
     });
   };
   return (
-    <div className="m-field" style={{ marginTop: 10, "--i": index } as CSSProperties} data-actions="answer">
-      <ActionRow title={COPY.actions.regenerate} hint={COPY.actions.regenerateHint} disabled reason={COPY.actions.regenerateSoon} />
-      <div className="closing">
-        <span className="closing-sign">
-          {COPY.actions.sign}
-        </span>
-        {disclaimer ? (
-          <>
-            <span className="closing-sep" aria-hidden="true" />
-            <div className="closing-note">
-              <Disclaimer t={COPY.disclaimer} />
-            </div>
-          </>
-        ) : null}
-        <div className="closing-acts">
-          <button type="button" className="act-btn" aria-label={COPY.actions.good} aria-pressed={rating === "good"} onClick={() => setRating(rating === "good" ? null : "good")}>
-            {THUMB_UP}
-          </button>
-          <button type="button" className="act-btn" aria-label={COPY.actions.bad} aria-pressed={rating === "bad"} onClick={() => setRating(rating === "bad" ? null : "bad")}>
-            {THUMB_DOWN}
-          </button>
-          <button type="button" className="act-btn" aria-label={COPY.actions.copy} data-done={copied} onClick={copy}>
-            {copied ? CHECK_ICON : COPY_ICON}
-          </button>
-        </div>
-      </div>
+    <div className="closing-acts" data-actions="answer">
+      <button type="button" className="act-btn" aria-label={COPY.actions.good} aria-pressed={rating === "good"} onClick={() => setRating(rating === "good" ? null : "good")}>
+        {THUMB_UP}
+      </button>
+      <button type="button" className="act-btn" aria-label={COPY.actions.bad} aria-pressed={rating === "bad"} onClick={() => setRating(rating === "bad" ? null : "bad")}>
+        {THUMB_DOWN}
+      </button>
+      <button type="button" className="act-btn" aria-label={COPY.actions.copy} data-done={copied} onClick={copy}>
+        {copied ? CHECK_ICON : COPY_ICON}
+      </button>
       <span role="status" className="sr-only">
         {copied ? COPY.actions.copied : ""}
       </span>

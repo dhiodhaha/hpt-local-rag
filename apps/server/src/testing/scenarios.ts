@@ -3,9 +3,9 @@ import { claudeModelOptions, createHost, type Host, type HostDeps } from "../fea
 import { chunked, scriptedProvider, type Connection, type ScriptedAttempt } from "../features/providers/index.ts";
 import type { EvidenceLevel, Passage } from "../features/search/index.ts";
 import { answerConfig } from "../shared/config.ts";
-import { GOOD_ANSWER, TEXT_ONE, TEXT_TWO, answerJson, makePassage } from "./answer-fixtures.ts";
+import { ARABIC, GOOD_ANSWER, TEXT_ONE, TEXT_TWO, answerJson, makePassage } from "./answer-fixtures.ts";
 import { fakeIndex, type FakeIndex } from "./fake-index.ts";
-import { READER_ORDER, REVISED_ORDER } from "./reader-fixtures.ts";
+import { READER_ORDER, REVISED_ORDER, TJ_PASSAGES, TJ_QUOTE_ONE, TJ_QUOTE_TWO } from "./reader-fixtures.ts";
 
 /**
  * Named, repeatable runs of the real engine (real pipeline, real checks, real fold) with a scripted provider and a fake index
@@ -23,11 +23,54 @@ export const SCENARIO_PASSAGES: readonly Passage[] = [
   makePassage(5, "Pupuk kandang yang sudah matang boleh dicampurkan ke dalam tumpukan kompos.", { sourceType: "penjelasan", title: "Penjelasan Uji 5", number: null, year: 2019, locator: { kitab: "Kitab Pertanian", bab: "Bab Pupuk" } }),
 ];
 
+const ARABIC_B = "ذَهَبَ الطَّالِبُ إِلَى الْمَدْرَسَةِ فِي الصَّبَاحِ";
+const ARABIC_C = "قَرَأَ الْوَلَدُ الدَّرْسَ ثُمَّ كَتَبَ الْوَاجِبَ فِي الْبَيْتِ بَعْدَ صَلَاةِ الْعَصْرِ وَقَبْلَ غُرُوبِ الشَّمْسِ فِي الْمَسْجِدِ الْكَبِيرِ";
+
+/** Two more passages with Arabic of their own, so an answer can carry three dalil and one of them is long enough to wrap. */
+const DALIL_PASSAGES: readonly Passage[] = [
+  ...SCENARIO_PASSAGES,
+  makePassage(6, `Contoh kalimat sederhana dalam kitab: ${ARABIC_B}. Contoh ini hanya untuk uji tampilan.`, { sourceType: "hpt", title: "HPT Jilid 2, Bab Contoh", number: null, year: null, locator: { volume: "Jilid 2", kitab: "Kitab Contoh", bab: "Bab Kalimat" } }),
+  makePassage(7, `Contoh kalimat panjang dalam fatwa: ${ARABIC_C} dan seterusnya.`, { sourceType: "fatwa", title: "Fatwa Tarjih Uji 7", number: "7", year: 2016 }),
+];
+
+const MANY_DALIL = {
+  summary: "Kompos boleh dibuat dari sisa daun [S1]. Namun kompos harus matang sebelum dipakai [S2], dan contoh tulisannya ada di kitab [S6].",
+  dalil: [
+    { id: "D1", kind: "tarjih", reference: "Fatwa Uji 2", arabic: ARABIC, translation: "Penulis menulis kitab itu.", explanation: "Contoh ini menunjukkan penulisan yang dipakai fatwa.", explanation_basis: "explicit", sources: ["S2"] },
+    { id: "D2", kind: "hadith", reference: "HR. Uji", arabic: ARABIC_B, translation: "Murid itu pergi ke sekolah pada pagi hari.", explanation: "Hadis uji ini hanya contoh kalimat pendek.", explanation_basis: "explicit", sources: ["S6"] },
+    { id: "D3", kind: "quran", reference: "QS. Uji: 7", arabic: ARABIC_C, translation: "Anak itu membaca pelajaran lalu menulis tugas di rumah.", explanation: "Ayat uji yang panjang ini dipakai untuk melihat teks Arab membungkus di dalam kolom.", explanation_basis: "inferred", sources: ["S7"] },
+  ],
+};
+
+/** More notes than the text is tall, and a note whose first mark comes after the first dalil: the margin must follow the text when the Sumber panel opens and closes and when the sidebar toggles. */
+const MARGIN_TALL = {
+  dalil: [
+    { id: "D1", kind: "tarjih", reference: "Fatwa Uji 2", arabic: ARABIC, translation: "Penulis menulis kitab itu.", explanation: "Contoh ini menunjukkan penulisan yang dipakai fatwa.", explanation_basis: "explicit", sources: ["S2"] },
+    { id: "D2", kind: "tarjih", reference: "Fatwa Uji 2 (lagi)", arabic: ARABIC, translation: "Penulis menulis kitab itu.", explanation: "Dalil kedua mengutip fatwa yang sama.", explanation_basis: "explicit", sources: ["S2"] },
+    { id: "D3", kind: "tarjih", reference: "Fatwa Uji 2 (ketiga)", arabic: ARABIC, translation: "Penulis menulis kitab itu.", explanation: "Dalil ketiga mengutip fatwa yang sama.", explanation_basis: "explicit", sources: ["S2"] },
+  ],
+  summary: "Kompos boleh dibuat dari sisa daun [S1]. Namun kompos harus matang [S2][S3], dan sampah dapur juga cocok [S4].",
+  notes: [{ id: "N1", kind: "exception", title: "Pupuk kandang harus matang", text: "Pakai yang sudah matang saja.", basis: "explicit", quote: { source: "S5", text: "Pupuk kandang yang sudah matang boleh dicampurkan ke dalam tumpukan kompos." }, sources: ["S5"] }],
+  quotes: [
+    { source: "S1", text: "menumpuk sisa daun" },
+    { source: "S2", text: "Kompos yang belum matang tidak boleh dipakai." },
+    { source: "S3", text: "Daun kering juga dapat dibakar" },
+    { source: "S4", text: "Sampah dapur seperti kulit buah" },
+  ],
+};
+
 const QUESTION = "Apakah kompos boleh dibuat dari sisa daun?";
 const UNKNOWN_REFERENCE = { as_stated: "HPT Jilid 9, Bab Kompos", note: "Bab ini tidak ada di koleksi." };
 const NOT_A_ANSWER = { ...GOOD_ANSWER, basis: null, headline: null, headline_short: null, summary: null, notes: [], dalil: [], quotes: [] };
 const THREE_CITED = {
   notes: [(GOOD_ANSWER.notes as Record<string, unknown>[])[0], { ...(GOOD_ANSWER.notes as Record<string, unknown>[])[1], sources: ["S3"] }],
+};
+/** An inferred answer: the verdict says "Berdasarkan HPT" and the note on what was inferred, which cites a passage of its own, follows it. */
+const INFERRED = {
+  ...THREE_CITED,
+  basis: "inferred",
+  headline: "Berdasarkan HPT, kompos boleh dibuat dari sisa daun.",
+  inference_note: "Belum ada fatwa yang membahas sisa daun secara khusus [S3].",
 };
 const RESET_FAR = "2099-01-01T00:00:00Z";
 
@@ -62,6 +105,26 @@ export const SCENARIOS = {
   },
   /** Baca putusan: the answer cites three passages deep inside one long fictional note, so a citation opens the reader far from the top. */
   reader: { question: QUESTION, script: (size) => [stream(answerJson(THREE_CITED), size, 0)], passages: READER_ORDER },
+  /** Baca putusan on a Tanya Jawab note: numbered questions, the asker, Jawab mid-line, lettered items, a hadith with its Arabic and translation. Two passages are cited. */
+  "reader-tj": {
+    question: QUESTION,
+    script: (size) => [
+      stream(
+        answerJson({
+          summary: "Arah kiblat cukup dihadapi saat takbiratul ihram [S1]. Di atas kapal shalat boleh dikerjakan sambil duduk [S2].",
+          notes: [],
+          dalil: [],
+          quotes: [
+            { source: "S1", text: TJ_QUOTE_ONE },
+            { source: "S2", text: TJ_QUOTE_TWO },
+          ],
+        }),
+        size,
+        0,
+      ),
+    ],
+    passages: TJ_PASSAGES,
+  },
   /** Baca putusan on a note a later one replaced in part: the notice, the dashed passages and the way to the newer ruling. */
   "reader-revised": { question: QUESTION, script: (size) => [stream(answerJson(THREE_CITED), size, 0)], passages: REVISED_ORDER },
   /** D7.1 then D7.2: the headline is marked verifying until the summary passes its checks. */
@@ -70,14 +133,25 @@ export const SCENARIOS = {
     script: (size) => [stream(answerJson(THREE_CITED), size, 0)],
     cuts: { thinking: (event) => event.kind === "sources", verifying: (event) => event.kind === "progress" && event.prose.some((span) => span.kind === "cite") },
   },
-  /** A second question in the same conversation, for the earlier-turn card and the grouped Sumber panel. */
+  /** D9.11: an inferred answer. The note on what was inferred reads as quiet prose after the verdict, with no badge and no note in the actions row. */
+  inferred: {
+    question: QUESTION,
+    script: (size) => [stream(answerJson(INFERRED), size, 0)],
+    cuts: { verifying: (event) => event.kind === "progress" && event.prose.some((span) => span.kind === "cite") },
+  },
+  /** A second question in the same conversation, for the grouped Sumber panel. The middle attempt is D33's rewrite call, which runs before the second answer. */
   "follow-up": {
     question: QUESTION,
     script: (size) => [
       stream(answerJson(THREE_CITED), size, 0),
+      stream("kompos yang belum matang", size, 0),
       stream(answerJson({ headline: "Menurut HPT, kompos yang belum matang tidak boleh dipakai.", summary: "Kompos yang belum matang tidak boleh dipakai [S2]." , notes: [], dalil: [], quotes: [] }), size, 0),
     ],
   },
+  /** Three dalil with Arabic of their own, one inferred and one long: all three are written into the answer. */
+  "many-dalil": { question: QUESTION, script: (size) => [stream(answerJson(MANY_DALIL), size, 0)], passages: DALIL_PASSAGES },
+  /** The margin when its notes are taller than the text: the later notes must stay level with their lines after the panel or the sidebar changes the width. */
+  "margin-tall": { question: QUESTION, script: (size) => [stream(answerJson(MARGIN_TALL), size, 0)] },
   /** D7.3: the summary fails its checks once, the calm "Memeriksa ulang sumber…" line replaces the card, the retry delivers. */
   restart: {
     question: QUESTION,

@@ -101,6 +101,7 @@
   min-width: 0;
   position: relative;
   overflow: hidden;
+  container: rd-art / inline-size;
 }
 .rd-scroll {
   position: absolute;
@@ -156,44 +157,157 @@
 }
 .rd-h2 + .cp,
 .rd-h3 + .cp,
-.rd-h2 + .rd-dl,
-.rd-h3 + .rd-dl {
+.rd-h2 + .rd-bk,
+.rd-h3 + .rd-bk {
   margin-top: 12px;
 }
-.rd-p {
+
+/*
+ * The text is a page of a book (D9.18): set justified with a first-line indent instead of a blank line between paragraphs. Chromium has
+ * no Indonesian hyphenation and no hyphenation at all in this Electron, so word-space justification leaves wide gaps. Measured on the
+ * real window: the gaps stretch to 3.5 times a space at a 640 px column. Spreading the slack over the letters instead
+ * (text-justify: inter-character) keeps the gaps at 1.1 times a space at any column from 560 px, and the letters open by 0.02 em on
+ * average and 0.05 em at worst. Under 540 px the letters would open by 0.09 em, so a narrower column is left ragged on the right.
+ */
+.rd-bk {
+  margin-top: 14px;
   font-family: var(--font-read);
   font-size: var(--text-read);
-  line-height: 1.7;
-  text-wrap: pretty;
-  margin-top: 14px;
+  line-height: 1.6;
+  text-align: justify;
+  text-justify: inter-character;
+  font-variant-numeric: oldstyle-nums;
 }
-.rd-ps > :first-child.rd-p,
+@container rd-art (max-width: 611px) {
+  .rd-bk {
+    text-align: start;
+  }
+}
+.rd-p {
+  margin: 0;
+  text-indent: 1.5em;
+}
+.rd-ps > .rd-bk:first-child,
 .cp-bd > :first-child {
   margin-top: 0;
 }
-.rd-p mark,
-.rd-ar mark {
-  background: linear-gradient(transparent 12%, var(--color-accent-soft) 12%, var(--color-accent-soft) 92%, transparent 92%);
+.rd-bk > :first-child.rd-p {
+  text-indent: 0;
+}
+.rd-ar mark,
+.rd-p mark {
+  --hl: var(--color-accent-soft);
+  background: linear-gradient(transparent 12%, var(--hl) 12%, var(--hl) 92%, transparent 92%);
   color: var(--color-ink);
   padding: 0 2px;
   border-radius: 3px;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
-.rd-ps[data-current="true"] mark {
-  animation: m-fade var(--m-cite) var(--m-ease) both;
+@property --hl {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
 }
-.rd-dl {
-  margin-top: 16px;
-  padding: 14px 20px 16px;
-  border-radius: calc(var(--radius-sm) + 16px);
-  background: var(--color-surface);
+@keyframes m-mark-a {
+  from {
+    --hl: transparent;
+  }
+}
+@keyframes m-mark-b {
+  from {
+    --hl: transparent;
+  }
+}
+.rd-ps[data-landed="a"] mark {
+  animation: m-mark-a var(--m-cite) var(--m-ease) var(--m-field-enter) both;
+}
+.rd-ps[data-landed="b"] mark {
+  animation: m-mark-b var(--m-cite) var(--m-ease) var(--m-field-enter) both;
+}
+.ar-run {
+  text-justify: inter-word;
+}
+
+/* Tanya and Jawab, "Artinya" and the numbers and letters of points are run-in heads, not blocks. */
+.rd-p[data-kind="title"] {
+  margin-top: 22px;
+  text-indent: 0;
+  text-align: start;
+  font-weight: 600;
+  break-after: avoid;
+}
+.rd-p[data-kind="question"],
+.rd-p[data-kind="answer"] {
+  text-indent: 0;
+}
+.rd-p[data-kind="question"] {
+  color: color-mix(in srgb, var(--color-ink) 82%, var(--color-ground));
+}
+.rd-p[data-kind="answer"] {
+  margin-top: 10px;
+}
+.rd-p[data-kind="question"] .rd-hd,
+.rd-p[data-kind="answer"] .rd-hd {
+  font-variant: small-caps;
+  text-transform: lowercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.rd-p[data-kind="signature"] {
+  text-indent: 0;
+  text-align: right;
+  font-style: italic;
+  color: var(--color-ink-muted);
+}
+.rd-p[data-kind="point"] .rd-hd {
+  font-weight: 600;
+}
+.rd-p[data-kind="item"] {
+  position: relative;
+  padding-left: 3em;
+  text-indent: 0;
+  text-align: start;
+}
+.rd-p[data-kind="item"] .rd-hd {
+  position: absolute;
+  left: 1.5em;
+}
+.rd-p[data-kind="item"][data-depth="2"] {
+  padding-left: 4.5em;
+}
+.rd-p[data-kind="item"][data-depth="2"] .rd-hd {
+  left: 3em;
+}
+.rd-p[data-lead="true"] {
+  break-after: avoid;
+}
+.rd-p[data-kind="translation"] {
+  margin: 0 3em;
+  font-size: 16.5px;
+  line-height: 1.5;
+  text-indent: 0;
+  text-align: start;
+}
+.rd-p[data-kind="translation"] .rd-hd {
+  font-style: italic;
+}
+.rd-p[data-kind="narrator"] {
+  margin: 0 3em;
+  text-indent: 0;
+  text-align: right;
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
+  font-size: 15px;
+  color: var(--color-ink-muted);
 }
 .rd-ar {
+  margin: 6px 0 2px;
   font-family: var(--font-arabic);
-  font-size: 26px;
-  line-height: 2.1;
-  text-align: right;
+  font-size: 24px;
+  line-height: 1.9;
+  text-align: center;
+  text-wrap: balance;
   direction: rtl;
 }
 
@@ -345,9 +459,9 @@
   gap: 3px;
 }
 .rd-answer {
-  padding: 18px 20px;
+  padding: 18px 22px;
   background: var(--color-surface);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
 }
 .rd-q {
   font-size: 13px;
@@ -384,7 +498,7 @@
 .rd-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 .rd-none {
   margin: 18px 4px 0;

@@ -25,7 +25,7 @@ export function ProseView({ spans, numberOf, active, onCite, words = false, care
         if (segment.kind === "text") return words ? <Words key={index} text={segment.text} /> : segment.text;
         const marks = segment.passages === null ? <CiteMark state="pending" c="·" /> : segment.passages.map((id) => {
           const number = numberOf(id);
-          return number === null ? null : <CiteMark key={id} state={active === id ? "active" : "default"} c={String(number)} onClick={() => onCite(id)} />;
+          return number === null ? null : <CiteMark key={id} passage={id} state={active === id ? "active" : "default"} c={String(number)} onClick={() => onCite(id)} />;
         });
         return (
           <span key={index} className="nw">

@@ -1,6 +1,8 @@
 /*
- * Design tokens, copied verbatim from the Doop canvas 32zM84TK65, theme "calm" (get_tokens, 2026-11-26). The names and values are
- * the canvas's; this file only wraps them in Tailwind's @theme so they also become utilities. Change a value in Doop first.
+ * Design tokens from the Doop canvas 32zM84TK65, theme "calm" (get_tokens, 2026-11-26). The names are the canvas's; this file only
+ * wraps them in Tailwind's @theme so they also become utilities. Change a value in Doop first. One owner decision sits on top
+ * (D9.9): the accent is the Muhammadiyah blue #2C368B with soft #E6E8F4, and buttons take that blue. Contrast, measured: accent on
+ * ground 10.2, accent on soft 8.6, on-accent on accent 10.5, accent on surface 9.4. All pass AA.
  */
 @theme {
   --color-*: initial;
@@ -14,14 +16,14 @@
   --color-ink-muted: #5d6368;
   --color-rule: #e6e7ec;
   --color-official: #e0f5e7;
-  --color-accent: #2d582c;
-  --color-accent-soft: #d4f2de;
+  --color-accent: #2c368b;
+  --color-accent-soft: #e6e8f4;
   --color-caution: #143b71;
   --color-caution-soft: #ebecfa;
   --color-ground-deep: #fcfcfc;
   --color-on-accent: #ffffff;
-  --color-button: #2c3235;
-  --color-button-edge: #2c3235;
+  --color-button: #2c368b;
+  --color-button-edge: #2c368b;
   --color-inferred: #5b3a8e;
   --color-inferred-soft: #efe9f8;
   --color-warn: #8a4b0f;

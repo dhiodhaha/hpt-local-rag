@@ -7,12 +7,17 @@ const JUMP_OFFSET = 140;
 /** A passage counts as the one being read once its top has passed this line. Below the jump line, so a jump lands on its own target. */
 const READING_LINE = 200;
 
+/** The passage the last jump went to. The flip alternates on every jump, so jumping to the same passage again plays its highlight again. */
+export type Landed = { readonly id: PassageId; readonly flip: "a" | "b" };
+
 export type ReaderScroll = {
   readonly scroller: RefObject<HTMLDivElement | null>;
   /** Ref callback for the element that wraps one passage. */
   readonly place: (id: PassageId) => (element: HTMLElement | null) => void;
   /** The passage the person is reading: the one at the reading line, or the one the last jump went to. */
   readonly current: PassageId;
+  /** Only a jump lands. Scrolling past a passage changes `current` and never this. */
+  readonly landed: Landed;
   /** Instant on purpose: a jump follows a click or a key, and nothing about it needs to be watched. */
   jumpTo(id: PassageId): void;
 };
@@ -28,6 +33,7 @@ export function useReaderScroll(doc: ReaderDocument | null, target: PassageId): 
   /** Where the last jump put the scroll position, until the scroll event it causes has been seen. */
   const jumped = useRef<number | null>(null);
   const [current, setCurrent] = useState(target);
+  const [landed, setLanded] = useState<Landed>({ id: target, flip: "a" });
 
   const place = useCallback(
     (id: PassageId) => (element: HTMLElement | null) => {
@@ -47,6 +53,7 @@ export function useReaderScroll(doc: ReaderDocument | null, target: PassageId): 
       jumped.current = view.scrollTop;
     }
     setCurrent(id);
+    setLanded((before) => ({ id, flip: before.flip === "a" ? "b" : "a" }));
   }, []);
 
   useLayoutEffect(() => {
@@ -79,5 +86,5 @@ export function useReaderScroll(doc: ReaderDocument | null, target: PassageId): 
     };
   }, [doc]);
 
-  return { scroller, place, current, jumpTo };
+  return { scroller, place, current, landed, jumpTo };
 }

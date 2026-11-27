@@ -8,9 +8,7 @@ const LABEL_STYLE = { fontSize: 11.5, fontWeight: 600, letterSpacing: ".06em", t
 const TITLE_STYLE = { fontFamily: "var(--font-read)", fontWeight: 400, fontSize: 25, lineHeight: 1.2, marginTop: 8, textWrap: "balance" } as const;
 const BODY_STYLE = { fontSize: 14.5, fontWeight: 500, lineHeight: 1.55, color: "var(--color-ink-muted)", marginTop: 8, textWrap: "pretty" } as const;
 
-const CARD = { background: "var(--color-surface)", borderRadius: "var(--radius-lg)", padding: "22px 26px 22px" } as const;
-
-/** Clarify, insufficient, out of scope and declined: the four replies that are not an answer (Doop 6a to 6d). */
+/** Clarify, insufficient, out of scope and declined: the four replies that are not an answer (Doop 6a to 6d). They read as prose, like an answer, and sit on the page without a card. */
 export function ReplyView({ reply, onPick }: { reply: Reply; onPick: (option: string, event: MouseEvent<HTMLButtonElement>) => void }) {
   if (reply.type === "clarify") {
     return (
@@ -30,7 +28,7 @@ export function ReplyView({ reply, onPick }: { reply: Reply; onPick: (option: st
   }
   if (reply.type === "declined") {
     return (
-      <section style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "var(--color-surface)", borderRadius: "var(--radius-lg)", padding: "16px 18px" }} data-card="declined">
+      <section style={{ display: "flex", gap: 12, alignItems: "flex-start" }} data-card="declined">
         <span style={{ display: "inline-flex", width: 32, height: 32, flex: "none", borderRadius: 999, background: "var(--color-ground)", color: "var(--color-ink-muted)", alignItems: "center", justifyContent: "center" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden="true">
             <circle cx="12" cy="12" r="9" />
@@ -44,7 +42,7 @@ export function ReplyView({ reply, onPick }: { reply: Reply; onPick: (option: st
   const copy = COPY.reply[reply.type];
   const warn = reply.type === "insufficient";
   return (
-    <section style={CARD} data-card={reply.type}>
+    <section data-card={reply.type}>
       <div style={{ ...LABEL_STYLE, color: warn ? "var(--color-warn)" : LABEL_STYLE.color }}>{copy.label}</div>
       <h3 style={TITLE_STYLE}>{copy.title}</h3>
       <p style={BODY_STYLE}>{reply.message ?? copy.body}</p>

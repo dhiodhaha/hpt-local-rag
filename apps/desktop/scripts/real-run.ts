@@ -89,7 +89,7 @@ await second.page.locator("[data-turn]").nth(1).waitFor();
 await second.page.waitForTimeout(900);
 evidence["reopenedTurns"] = await second.page.locator("[data-turn]").count();
 evidence["reopenedHeadlineMatchesFirstRun"] = (await headlineOf(second.page, 1)) === followUpHeadline;
-evidence["firstTurnIsCollapsedFromStore"] = (await second.page.locator("[data-turn]").first().getAttribute("data-view")) === "earlier";
+evidence["firstTurnIsShownFromStore"] = (await second.page.locator("[data-turn]").first().getAttribute("data-view")) === "answer";
 evidence["firstHeadlineCharsSeen"] = firstHeadline?.length ?? 0;
 await shot(second.page, "5-reopened");
 await ask(second.page, "6-continued-after-restart", QUESTIONS.afterRestart);

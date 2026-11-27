@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { noteIdOf, type PassageId } from "@hpt/server/client";
 import { COPY } from "../chat/copy.ts";
 import type { Reader, Turn } from "../chat/store.ts";
-import { SourcesBody } from "../chat/SourcesPanel.tsx";
+import { SourcesBody, type Preview } from "../chat/SourcesPanel.tsx";
 import { panelOf } from "../chat/view.ts";
 import { Badge, Button, ReaderHeader, StateNotice, TocRow, type TocRowState } from "../ui/index.ts";
 import { AnswerPane } from "./AnswerPane.tsx";
@@ -151,9 +151,10 @@ export function ReaderView({ reader, turn, closing, onClose, onShow, onRetry }: 
   const root = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<Tab>("answer");
   const [tocOpen, setTocOpen] = useState(() => window.innerWidth >= TOC_OPEN_FROM_PX);
+  const [preview, setPreview] = useState<Preview | null>(null);
   const passages = reader.load.state === "ready" ? reader.load.passages : null;
   const doc = useMemo(() => (passages === null ? null : documentOf(passages)), [passages]);
-  const { scroller, place, current, jumpTo } = useReaderScroll(doc, reader.passage);
+  const { scroller, place, current, landed, jumpTo } = useReaderScroll(doc, reader.passage);
   const annotations = useMemo(() => annotationsOf(turn.run.answer), [turn.run.answer]);
   const cited = useMemo(() => (doc === null ? [] : citedIn(doc, annotations)), [doc, annotations]);
   const citedIds = useMemo(() => new Set(cited.map((entry) => entry.passage.id)), [cited]);
@@ -161,7 +162,7 @@ export function ReaderView({ reader, turn, closing, onClose, onShow, onRetry }: 
   const hasContents = doc !== null && doc.bagian.length > 1;
   const title = doc?.title ?? turn.run.sources.find((card) => card.passage.id === reader.passage)?.passage.title ?? "";
 
-  const sourcesPane = sources === null ? null : <SourcesBody panel={sources} turnKey={turn.key} earlier={[]} active={reader.passage} onOpen={(_turn, id) => go(id)} />;
+  const sourcesPane = sources === null ? null : <SourcesBody panel={sources} turnKey={turn.key} earlier={[]} preview={preview} onPreview={(key, id) => setPreview(preview?.turn === key && preview.passage === id ? null : { turn: key, passage: id })} onOpen={(_turn, id) => go(id)} />;
 
   useEffect(() => {
     root.current?.querySelector<HTMLElement>("[data-reader-back]")?.focus();
@@ -201,7 +202,7 @@ export function ReaderView({ reader, turn, closing, onClose, onShow, onRetry }: 
             {reader.load.state === "loading" ? <Loading /> : null}
             {doc === null ? null : (
               <div ref={scroller} className="rd-scroll" tabIndex={0} aria-label={doc.title}>
-                <Article doc={doc} annotations={annotations} current={current} place={place} />
+                <Article doc={doc} annotations={annotations} current={current} landed={landed} place={place} />
               </div>
             )}
             {hasContents ? <div className="rd-fade" aria-hidden="true" /> : null}

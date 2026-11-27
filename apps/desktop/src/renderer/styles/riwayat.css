@@ -69,9 +69,22 @@
   outline-offset: 2px;
 }
 
+/* The sidebar folds away with Ctrl B: its wrapper narrows to nothing while the panel inside keeps its width. */
+.rw-wrap {
+  flex: none;
+  width: 264px;
+  overflow: hidden;
+  transition: width 200ms var(--ease-out);
+}
+.cs-root[data-sidebar="closed"] .rw-wrap {
+  width: 0;
+}
+:root[data-motion="reduced"] .rw-wrap {
+  transition: none;
+}
 .rw-side {
   width: 264px;
-  flex: none;
+  height: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -79,35 +92,64 @@
 }
 .rw-top {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   padding: 4px 2px 0 4px;
 }
 .rw-new {
-  margin: 6px 0 6px;
+  margin: 14px 0 0;
 }
-.rw-scroll {
+.rw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 6px 2px 14px;
+}
+.rw-head-t {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.rw-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 0 2px 6px;
+  border-radius: var(--radius-full);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+.rw-all[aria-current="page"] {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.rw-all:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+/* The history scrolls with no scrollbar. Its edges blur and fade, so a row leaves and enters softly. */
+.rw-list {
+  position: relative;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
   margin: 0 -12px;
-  padding: 0 0 8px 12px;
 }
-.rw-side > .nav {
-  flex: none;
-  margin-top: 4px;
+.rw-scroll {
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 8px 12px 80px;
+}
+.rw-scroll::-webkit-scrollbar {
+  display: none;
 }
 .rw-conn {
   flex: none;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-top: 8px;
-  margin-top: auto;
-}
-.rw-scroll + .rw-conn,
-.nav + .rw-conn {
-  margin-top: 8px;
+  padding-top: 6px;
 }
 .rw-count {
   padding: 14px 14px 2px;
@@ -372,6 +414,10 @@
   }
   .rr[data-size="sidebar"]:hover .more {
     display: flex;
+  }
+  /* The room for the button is kept in every state that can show it, the active row included. */
+  .rr[data-size="sidebar"]:hover .body {
+    padding-right: 38px;
   }
 }
 .rr[data-size="sidebar"][data-state="menu"] .more {
@@ -752,32 +798,6 @@
   }
 }
 
-.closing {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-top: 20px;
-  padding: 18px 4px 0 6px;
-  border-top: 1px solid var(--color-rule);
-}
-.closing-sign {
-  flex: none;
-  font-family: var(--font-read);
-  font-style: italic;
-  font-size: 19px;
-  line-height: 1.2;
-  color: var(--color-ink-muted);
-}
-.closing-sep {
-  flex: none;
-  width: 1px;
-  height: 28px;
-  background: var(--color-rule);
-}
-.closing-note {
-  flex: 1;
-  min-width: 0;
-}
 .closing-acts {
   flex: none;
   display: flex;

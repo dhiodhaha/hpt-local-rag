@@ -1,0 +1,723 @@
+/*
+ * The conversation screen: D9.6 (the answer as prose with margin notes), D9.8a (the question box floats, the caution sits under it),
+ * D9.9 (the sidebar and its edges) and D9.4 (the Sumber panel). Layout is a 640px text column and a 240px margin. When the window
+ * is too narrow for both, or the Sumber panel takes the room, the margin notes drop under the paragraph they belong to.
+ */
+.cs-root {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  background: var(--color-surface);
+}
+
+.cv-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  margin: 8px 8px 8px 0;
+  background: var(--color-ground);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  container: chat / inline-size;
+}
+.cv-main[data-panel="open"] {
+  margin-right: 0;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+}
+
+/* A progressive blur: each layer blurs a little more toward the edge, and the last one fades into the surface. */
+.pb {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  pointer-events: none;
+  --pb: var(--color-ground);
+}
+.pb[data-tone="surface"] {
+  --pb: var(--color-surface);
+}
+.pb i {
+  position: absolute;
+  inset: 0;
+}
+.pb[data-side="top"] {
+  top: 0;
+}
+.pb[data-side="bottom"] {
+  bottom: 0;
+}
+.pb[data-side="top"] i:nth-child(1) {
+  backdrop-filter: blur(1px);
+  mask-image: linear-gradient(black 40%, transparent);
+}
+.pb[data-side="top"] i:nth-child(2) {
+  backdrop-filter: blur(4px);
+  mask-image: linear-gradient(black 25%, transparent 70%);
+}
+.pb[data-side="top"] i:nth-child(3) {
+  backdrop-filter: blur(10px);
+  mask-image: linear-gradient(black 10%, transparent 45%);
+}
+.pb[data-side="top"] i:nth-child(4) {
+  background: linear-gradient(var(--pb) 30%, color-mix(in srgb, var(--pb) 0%, transparent));
+}
+.pb[data-side="bottom"] i:nth-child(1) {
+  backdrop-filter: blur(1px);
+  mask-image: linear-gradient(to top, black 40%, transparent);
+}
+.pb[data-side="bottom"] i:nth-child(2) {
+  backdrop-filter: blur(4px);
+  mask-image: linear-gradient(to top, black 25%, transparent 70%);
+}
+.pb[data-side="bottom"] i:nth-child(3) {
+  backdrop-filter: blur(10px);
+  mask-image: linear-gradient(to top, black 10%, transparent 45%);
+}
+.pb[data-side="bottom"] i:nth-child(4) {
+  background: linear-gradient(to top, var(--pb) 15%, color-mix(in srgb, var(--pb) 0%, transparent));
+}
+
+.cv-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 76px 0 210px;
+}
+.cv-scroll::-webkit-scrollbar {
+  display: none;
+}
+.cv-col {
+  width: min(640px, calc(100% - 64px));
+  margin: 0 auto;
+}
+.cv-text {
+  max-width: 640px;
+}
+.cv-turn + .cv-turn {
+  margin-top: 36px;
+}
+
+.cv-bub {
+  margin-left: auto;
+  width: fit-content;
+  max-width: 480px;
+  padding: 11px 18px;
+  border-radius: 22px 22px 6px 22px;
+  background: var(--color-surface);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.cv-turn > .m-hold {
+  margin-top: 24px;
+}
+.cv-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 4px 0;
+}
+.cv-fallback {
+  margin: 10px 4px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-warn);
+}
+.cv-recheck-sk {
+  margin: 22px 0 0 22px;
+  max-width: 560px;
+}
+
+.cv-head {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px 0 max(32px, calc((100% - 640px) / 2));
+}
+.cs-root[data-sidebar="closed"] .cv-head {
+  padding-left: max(72px, calc((100% - 640px) / 2));
+}
+.cv-title {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-meta {
+  margin-top: 1px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.cv-src {
+  margin-left: auto;
+  flex: none;
+  width: auto;
+  padding: 0 14px;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.cv-show {
+  position: absolute;
+  z-index: 6;
+  top: 12px;
+  left: 12px;
+}
+
+/* The question box: rounded, translucent, over a backdrop blur, with a soft shadow. */
+.cv-box {
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface) 68%, transparent);
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 0 0 1px var(--color-rule),
+    0 16px 40px color-mix(in srgb, var(--color-ink) 9%, transparent),
+    0 2px 6px color-mix(in srgb, var(--color-ink) 6%, transparent);
+}
+.cv-box .cmp {
+  background: transparent;
+}
+.cv-float {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  bottom: 36px;
+  width: min(736px, calc(100% - 48px));
+}
+.cv-disc {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  bottom: 11px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+  pointer-events: none;
+  transition: opacity 200ms ease-out;
+}
+.cv-disc[data-show="false"] {
+  opacity: 0;
+}
+
+/* The tooltip of an icon button: the action, and its shortcut in a key cap. */
+.tb .tip {
+  position: absolute;
+  z-index: 10;
+  top: 50%;
+  left: calc(100% + 8px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-ink);
+  color: var(--color-ground);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-ink) 22%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity 120ms ease-out;
+}
+.tb .tip kbd {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-ground) 16%, transparent);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tb:hover .tip {
+    opacity: 1;
+    transition-delay: 350ms;
+  }
+}
+.tb:focus-visible .tip {
+  opacity: 1;
+}
+
+/* The answer: one piece of writing. */
+.an {
+  position: relative;
+  display: block;
+}
+.an-ref {
+  max-width: 640px;
+  margin-bottom: 16px;
+}
+.an-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 16px;
+}
+.an > .an-row:first-child,
+.an > .swap:first-child .an-row {
+  margin-top: 0;
+}
+.an-main {
+  min-width: 0;
+  max-width: 640px;
+}
+.an-p {
+  font-family: var(--font-read);
+  font-size: 21px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.an-p + .an-p {
+  margin-top: 10px;
+}
+.an-p b {
+  font-weight: 600;
+}
+.an-hl {
+  transition: color var(--m-headline-settle) ease-out;
+}
+.an-hl[data-verifying="true"] {
+  color: color-mix(in srgb, var(--color-ink) calc(var(--m-headline-ink) * 1%), var(--color-ground));
+}
+.an-ar {
+  margin-top: 8px;
+  padding-right: 16px;
+  border-right: 2px solid var(--color-rule);
+  direction: rtl;
+  text-align: right;
+  font-family: var(--font-arabic);
+  font-size: 25px;
+  line-height: 2;
+  overflow-wrap: anywhere;
+}
+.an-tr {
+  margin-top: 4px;
+  font-family: var(--font-read);
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+}
+.an-ar + .an-tr + .an-p,
+.an-tr + .an-p {
+  margin-top: 12px;
+}
+.an-warn {
+  color: var(--color-warn);
+}
+.an-closing {
+  margin-top: 14px;
+  font-style: italic;
+}
+.an-more-sk {
+  max-width: 640px;
+  margin-top: 22px;
+}
+.an-foot {
+  display: flex;
+  margin-top: 12px;
+}
+.an-foot .closing-acts {
+  margin-left: auto;
+}
+
+/* Margin notes: which source a sentence leans on. Not cards. A wide window draws them as one column, each note level with the line that first cites it. */
+.an-margin,
+.an-side {
+  animation: m-fade var(--m-sources-enter) var(--m-ease);
+}
+.an-margin {
+  position: absolute;
+  top: 0;
+  left: 700px;
+  width: 240px;
+}
+.an-margin .an-sn {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--color-rule);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--color-ink-muted);
+  transition:
+    transform var(--m-sources-enter) var(--m-ease),
+    border-color 150ms ease;
+}
+:root[data-motion="reduced"] .an-margin .an-sn {
+  transition: border-color 150ms ease;
+}
+.an-margin .an-sn[data-active="true"] {
+  border-left-color: var(--color-accent);
+}
+
+/* The narrow layout: the notes of a paragraph sit under it. */
+.an-side {
+  margin-top: 10px;
+  padding-left: 14px;
+  border-left: 1px solid var(--color-rule);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--color-ink-muted);
+  transition: border-color 150ms ease;
+}
+.an-side:has([data-active="true"]) {
+  border-left-color: var(--color-accent);
+}
+.an-sn-hit {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.an-sn-hit:focus-visible,
+.an-sn-open:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.an-sn-t {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+@media (hover: hover) and (pointer: fine) {
+  .an-sn-hit:hover .an-sn-name {
+    text-decoration: underline;
+    text-decoration-color: var(--color-rule);
+    text-underline-offset: 3px;
+  }
+}
+.an-sn .c {
+  flex: none;
+  margin: 0;
+}
+.an-sn .c[data-state="active"] {
+  margin: 0;
+}
+.an-sn-w {
+  display: block;
+  margin-top: 1px;
+}
+.an-sn-q {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-read);
+  font-size: 15px;
+  line-height: 1.4;
+  quotes: none;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+.an-sn-arx {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 2px;
+  direction: rtl;
+  text-align: right;
+  font-family: var(--font-arabic);
+  font-size: 18px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+.an-sn-b {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.an-sn-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-accent);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.an-sn:hover .an-sn-open,
+.an-sn:focus-within .an-sn-open,
+.an-sn[data-active="true"] .an-sn-open {
+  opacity: 1;
+}
+
+@container chat (min-width: 990px) {
+  .cv-col {
+    width: min(940px, calc(100% - 64px));
+  }
+  .cv-head {
+    padding-left: max(32px, calc((100% - 940px) / 2));
+  }
+  .cs-root[data-sidebar="closed"] .cv-head {
+    padding-left: max(72px, calc((100% - 940px) / 2));
+  }
+}
+
+/* While it shrinks into its button the panel leaves the layout, so the conversation takes its room back at once. */
+.sx[data-closing="true"] {
+  position: absolute;
+  inset: 0 0 0 auto;
+  margin: 8px;
+  height: calc(100% - 16px);
+  pointer-events: none;
+}
+
+/* The Sumber panel (D9.4): a card is one line until it is clicked, then it opens its preview in place. */
+.sx {
+  z-index: 5;
+  outline: none;
+  width: 408px;
+  flex: none;
+  margin: 8px 8px 8px 0;
+  background: var(--color-ground);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  border-left: 1px solid var(--color-rule);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sx-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 68px;
+  flex: none;
+  padding: 0 12px 0 24px;
+}
+.sx-count {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.sx-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+.sx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sx-list > :not(.scard) {
+  margin-top: 6px;
+}
+
+/*
+ * A Sumber row (D9.20): a number, the title, one quoted line and a status dot. Clicking it opens the same row in place: the quoted line
+ * folds away while the whole quote, a small line of kind and status, and the two buttons unfold. Both parts stay mounted and move by
+ * transition, so a second click mid-way turns the motion round from where it is. Opening takes the enter time, closing the shorter
+ * exit time, and a reduced setting keeps the fade and drops the height.
+ */
+.scard {
+  border-radius: var(--radius-lg);
+  transition-property: background-color, box-shadow;
+  transition-duration: 120ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .scard[data-open="false"]:hover {
+    background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+  }
+}
+.scard[data-open="true"] {
+  background: var(--color-surface);
+}
+.scard-head {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 8px;
+  column-gap: 10px;
+  width: 100%;
+  padding: 12px 20px 0 18px;
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.scard-head:focus-visible {
+  outline: none;
+}
+.scard:has(.scard-head:focus-visible) {
+  box-shadow:
+    0 0 0 2px var(--color-ground),
+    0 0 0 4px var(--color-accent);
+}
+.scard .num,
+.scard .num.wait {
+  width: auto;
+  height: 20px;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  justify-content: flex-start;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+}
+.scard .nm {
+  min-width: 0;
+  line-height: 20px;
+}
+.scard-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+}
+.scard-dot[data-status="superseded"] {
+  background: var(--color-warn);
+}
+.scard-head > .scard-dot {
+  margin-top: 6px;
+}
+.scard-line {
+  grid-column: 2;
+}
+.scard-line-text {
+  display: block;
+  padding: 2px 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scard-more-pad {
+  padding: 6px 20px 18px 46px;
+}
+.scard-quote {
+  font-family: var(--font-read);
+  font-size: 16px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.scard-quote:has(.ar-run) {
+  line-height: 2;
+}
+.scard-quote[data-quoted="false"] {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.5;
+}
+.scard-meta {
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+}
+.scard-meta + .scard-meta {
+  margin-top: 4px;
+}
+.scard-acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.scard-legend {
+  display: flex;
+  gap: 16px;
+  padding: 10px 18px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+}
+.scard-legend > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Open and close by transition: the line and the detail trade their room in one grid track each. */
+.scard-line,
+.scard-more {
+  display: grid;
+  transition-property: grid-template-rows, opacity, visibility;
+  transition-timing-function: var(--m-ease);
+}
+.scard-line > *,
+.scard-more > * {
+  min-height: 0;
+  overflow: hidden;
+}
+.scard[data-open="false"] .scard-line {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.scard[data-open="false"] .scard-more {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+}
+.scard[data-open="true"] .scard-line {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.scard[data-open="true"] .scard-more {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+}
+.scard[data-open="true"] :is(.scard-line, .scard-more) {
+  transition-duration: var(--m-sources-enter);
+}
+.scard[data-open="false"] :is(.scard-line, .scard-more) {
+  transition-duration: var(--m-word-fade);
+}
+:root[data-motion="reduced"] :is(.scard-line, .scard-more) {
+  transition-property: opacity, visibility;
+}

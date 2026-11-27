@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { ConversationHit } from "@hpt/server/client";
-import { ConnectionStatus, GroupLabel, NavItem, NewChatButton, SearchField } from "../ui/index.ts";
+import { ConnectionStatus, FadeEdge, GroupLabel, NewChatButton, SearchField, TipButton } from "../ui/index.ts";
 import { PROVIDER_LOGOS } from "../ui/providerLogos.ts";
 import { ConversationRow } from "./ConversationRow.tsx";
 import { useChat } from "./context.tsx";
@@ -12,6 +12,7 @@ export type SidebarProps = {
   connection: ConnectionView;
   canStartNew: boolean;
   onNew: () => void;
+  onHide: () => void;
 };
 
 const SIDEBAR_ROWS = 30;
@@ -23,9 +24,16 @@ const SEARCH_ICON = (
   </svg>
 );
 
-const LIST_ICON = (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" />
+const PANEL_ICON = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="16" rx="3" />
+    <path d="M9.5 4v16" />
+  </svg>
+);
+
+const CHEVRON = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m9 6 6 6-6 6" />
   </svg>
 );
 
@@ -39,7 +47,6 @@ const LOCK = (
 function EmptyHistory() {
   return (
     <>
-      <GroupLabel t={COPY.riwayat.groupLabel} />
       <div className="rw-empty" data-state="empty">
         <p className="rw-empty-t">{COPY.riwayat.emptyTitle}</p>
         <p className="rw-empty-b">{COPY.riwayat.emptyBody}</p>
@@ -119,6 +126,17 @@ function Results({ hits, terms, query, now, highlighted }: { hits: readonly Conv
   );
 }
 
+/** The list scrolls with no scrollbar. Its top and bottom edges blur and fade into the sidebar, so rows leave and enter softly. */
+function FadedList({ children }: { children: ReactNode }) {
+  return (
+    <div className="rw-list">
+      <div className="rw-scroll">{children}</div>
+      <FadeEdge side="top" height={24} tone="surface" />
+      <FadeEdge side="bottom" height={80} tone="surface" />
+    </div>
+  );
+}
+
 function SearchPane({ now }: { now: Date }) {
   const search = useChat((state) => state.search);
   const { setQuery, closeSearch, openConversation } = useChat((state) => state);
@@ -144,18 +162,18 @@ function SearchPane({ now }: { now: Date }) {
   return (
     <>
       <SearchField value={search.query} placeholder={COPY.riwayat.search} label={COPY.riwayat.searchLabel} clearLabel={COPY.riwayat.clearSearch} autoFocus onChange={setQuery} onClear={() => setQuery("")} onKeyDown={onKeyDown} />
-      <div className="rw-scroll">
+      <FadedList>
         {search.result === null ? null : <Results hits={hits} terms={search.result.terms} query={search.settled ?? search.query} now={now} highlighted={highlighted} />}
         <p className="rw-scope">{COPY.riwayat.searchScope}</p>
         <p className="rw-keys">
           <kbd>Enter</kbd> {COPY.riwayat.hintOpen} <kbd>Esc</kbd> {COPY.riwayat.hintClose}
         </p>
-      </div>
+      </FadedList>
     </>
   );
 }
 
-export function Sidebar({ connection, canStartNew, onNew }: SidebarProps) {
+export function Sidebar({ connection, canStartNew, onNew, onHide }: SidebarProps) {
   const searching = useChat((state) => state.search.open);
   const screen = useChat((state) => state.screen);
   const { openSearch, showAll } = useChat((state) => state);
@@ -167,6 +185,9 @@ export function Sidebar({ connection, canStartNew, onNew }: SidebarProps) {
       ) : (
         <>
           <div className="rw-top">
+            <TipButton label={COPY.hideSidebar} kbd={COPY.sidebarKbd} onClick={onHide}>
+              {PANEL_ICON}
+            </TipButton>
             <button type="button" className="icon-btn rw-search" aria-label={COPY.riwayat.openSearch} onClick={openSearch}>
               {SEARCH_ICON}
             </button>
@@ -174,10 +195,16 @@ export function Sidebar({ connection, canStartNew, onNew }: SidebarProps) {
           <div className="rw-new" aria-disabled={!canStartNew}>
             <NewChatButton size="sidebar" label={COPY.newChat} kbd={COPY.riwayat.newChatKbd} onClick={canStartNew ? onNew : undefined} />
           </div>
-          <div className="rw-scroll">
-            <History now={now} />
+          <div className="rw-head">
+            <span className="rw-head-t">{COPY.riwayat.groupLabel}</span>
+            <button type="button" className="rw-all" aria-current={screen === "all" ? "page" : undefined} onClick={showAll}>
+              {COPY.riwayat.all}
+              {CHEVRON}
+            </button>
           </div>
-          <NavItem state={screen === "all" ? "active" : "default"} label={COPY.riwayat.all} icon={LIST_ICON} onClick={showAll} />
+          <FadedList>
+            <History now={now} />
+          </FadedList>
         </>
       )}
       <div className="rw-conn">
