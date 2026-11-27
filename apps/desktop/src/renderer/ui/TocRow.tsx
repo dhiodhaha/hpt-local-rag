@@ -7,7 +7,7 @@ export type TocRowProps = {
   state?: TocRowState;
   n: string;
   title: string;
-  meta: string;
+  meta?: string;
   /** CiteMarks for the passages of this bagian that the answer quotes. */
   marks?: ReactNode;
   onClick?: () => void;
@@ -20,7 +20,7 @@ export function TocRow({ state = "default", n, title, meta, marks, onClick }: To
       <span className="toc-n">{n}</span>
       <span className="toc-tx">
         <span className="toc-t">{title}</span>
-        <span className="toc-m">{meta}</span>
+        {meta === undefined ? null : <span className="toc-m">{meta}</span>}
       </span>
       <span className="toc-mk">{marks}</span>
     </button>

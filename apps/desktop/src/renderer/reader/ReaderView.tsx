@@ -64,7 +64,6 @@ function Contents({ doc, current, cited, onGo }: ContentsProps) {
               state={state}
               n={String(entry.n)}
               title={entry.title ?? COPY.reader.untitled}
-              meta={COPY.reader.paragraphs(entry.passages.length)}
               marks={marks === 0 ? null : <CiteNumber c={String(marks)} active={state === "current"} />}
               onClick={first === undefined ? undefined : () => onGo(first.id)}
             />
@@ -202,7 +201,7 @@ export function ReaderView({ reader, turn, closing, onClose, onShow, onRetry }: 
             {reader.load.state === "loading" ? <Loading /> : null}
             {doc === null ? null : (
               <div ref={scroller} className="rd-scroll" tabIndex={0} aria-label={doc.title}>
-                <Article doc={doc} annotations={annotations} current={current} place={place} onOpenNewer={go} />
+                <Article doc={doc} annotations={annotations} current={current} place={place} />
               </div>
             )}
             {hasContents ? <div className="rd-fade" aria-hidden="true" /> : null}

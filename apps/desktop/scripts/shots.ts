@@ -58,13 +58,12 @@ const SHOTS: readonly Shot[] = [
   { file: "27-riwayat-all-search", scenario: "riwayat", idle: true, after: allSearch, frame: "D6.7 dengan pencarian dan filter" },
   { file: "28-reader-from-citation", scenario: "reader", after: (page) => openFromCitation(page, 1), frame: "D6.8 dibuka dari tanda kutip 1" },
   { file: "29-reader-from-card", scenario: "reader", after: (page) => openFromCard(page), frame: "D6.8 dibuka dari kartu Sumber" },
-  { file: "30-reader-deep", scenario: "reader", after: (page) => openFromCard(page, 2), frame: "D6.8 paragraf jauh di dalam putusan panjang" },
+  { file: "30-reader-deep", scenario: "reader", after: (page) => openFromCard(page, 2), frame: "D6.8 bagian jauh di dalam putusan panjang" },
   { file: "31-reader-arabic", scenario: "reader", after: (page) => openFromCitation(page, 2), frame: "D6.8 teks Arab satu baris dan di dalam kalimat" },
   { file: "32-reader-sumber-tab", scenario: "reader", after: openSumberTab, frame: "D6.8 tab Sumber" },
   { file: "33-reader-toc-jump", scenario: "reader", after: jumpToLastBagian, frame: "D6.8 pindah bagian dari Daftar isi" },
   { file: "34-reader-revised", scenario: "reader-revised", after: (page) => openFromCard(page), frame: "D6.9 putusan direvisi" },
-  { file: "35-reader-revised-passages", scenario: "reader-revised", after: openRevisedPassages, frame: "D6.9 paragraf yang diubah" },
-  { file: "36-reader-newer-note", scenario: "reader-revised", after: openNewerNote, frame: "D6.9 Buka putusan terbaru" },
+  { file: "35-reader-revised-passages", scenario: "reader-revised", after: openRevisedPassages, frame: "D6.9 bagian yang diubah" },
   { file: "37-reader-entering", scenario: "reader", after: enteringWithMotion, motion: true, frame: "gerak masuk, 90 ms setelah dibuka" },
   { file: "39-sources-card-hover", scenario: "settled", after: hoverSecondCard, frame: "kartu Sumber yang kini membuka pembaca: sorotan di bawah kursor" },
   { file: "38-reader-closed-focus", scenario: "reader", after: closeWithEscape, frame: "Esc menutup, fokus kembali ke tanda kutip" },
@@ -72,16 +71,32 @@ const SHOTS: readonly Shot[] = [
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+/**
+ * The reader's own words and numbers must not look like the source's pasal, ayat or paragraph numbering: a passage is a chunk the
+ * index cut, not a paragraph of the source. The scenarios' passages are fictional and contain none of these words.
+ */
+async function assertNoSourceNumbering(page: Page): Promise<void> {
+  const found = await page.evaluate(() => {
+    const chrome = [".rh", ".rd-toc", ".rd-tabs", ".rd-listhead", ".rd-list", ".rd-pos", ".rd-notice", ".cp-hd"].flatMap((selector) => [...document.querySelectorAll(`.rd ${selector}`)].map((element) => (element as HTMLElement).innerText));
+    const labels = [...document.querySelectorAll(".rd [aria-label]")].map((element) => element.getAttribute("aria-label") ?? "");
+    const markers = [...document.querySelectorAll(".rd .rd-p")].map((element) => ((element as HTMLElement).innerText.match(/^\(\d+\)/) ?? [""])[0]);
+    return [...chrome, ...labels, ...markers].filter((text) => /\b(paragraf|pasal|ayat)\b/i.test(text) || /^\(\d+\)$/.test(text));
+  });
+  if (found.length > 0) throw new Error(`the reader shows source-like numbering: ${found.join(" | ")}`);
+}
+
 async function openFromCitation(page: Page, number: number): Promise<void> {
   await page.locator("[data-card='answer'] .c", { hasText: new RegExp(`^${number}$`) }).first().click();
   await page.locator("[data-reader][data-load='ready']").waitFor();
   await page.waitForTimeout(500);
+  await assertNoSourceNumbering(page);
 }
 
 async function openFromCard(page: Page, index = 0): Promise<void> {
   await page.locator("[data-source]").nth(index).click();
   await page.locator("[data-reader][data-load='ready']").waitFor();
   await page.waitForTimeout(500);
+  await assertNoSourceNumbering(page);
 }
 
 async function openSumberTab(page: Page): Promise<void> {
@@ -99,13 +114,6 @@ async function jumpToLastBagian(page: Page): Promise<void> {
 async function openRevisedPassages(page: Page): Promise<void> {
   await openFromCard(page);
   await page.locator(".toc-row").last().click();
-  await page.waitForTimeout(400);
-}
-
-async function openNewerNote(page: Page): Promise<void> {
-  await openFromCard(page);
-  await page.getByRole("button", { name: "Buka putusan terbaru" }).click();
-  await page.locator("[data-reader='putusan/uji-istihadah-baru'][data-load='ready']").waitFor();
   await page.waitForTimeout(400);
 }
 

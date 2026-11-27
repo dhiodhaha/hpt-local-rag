@@ -157,9 +157,7 @@
 .rd-h2 + .cp,
 .rd-h3 + .cp,
 .rd-h2 + .rd-dl,
-.rd-h3 + .rd-dl,
-.rd-h2 + .rd-pn-own,
-.rd-h3 + .rd-pn-own {
+.rd-h3 + .rd-dl {
   margin-top: 12px;
 }
 .rd-p {
@@ -168,19 +166,6 @@
   line-height: 1.7;
   text-wrap: pretty;
   margin-top: 14px;
-}
-.rd-pn {
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-ink-muted);
-  font-variant-numeric: tabular-nums;
-  margin-right: 6px;
-  vertical-align: 2px;
-}
-.rd-pn-own {
-  display: block;
-  margin: 14px 0 -6px;
 }
 .rd-ps > :first-child.rd-p,
 .cp-bd > :first-child {

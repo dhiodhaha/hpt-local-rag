@@ -1,4 +1,5 @@
 import { citedOf, type Answer, type NoteId, type Passage, type PassageId } from "@hpt/server/client";
+import { COPY } from "../chat/copy.ts";
 import { SOURCE_TYPE_LABEL } from "../chat/view.ts";
 
 /**
@@ -24,8 +25,6 @@ export type ReaderDocument = {
   readonly bagian: readonly Bagian[];
   /** Some passage of this note has been superseded: the note is shown as an archive. */
   readonly revised: boolean;
-  /** The passage that replaced the first superseded one, where "Buka putusan terbaru" goes. Null when nothing here is superseded. */
-  readonly newer: PassageId | null;
 };
 
 const HEADING_SEPARATOR = " › ";
@@ -51,7 +50,6 @@ function metaOf(first: Passage): string {
 export function documentOf(passages: readonly Passage[]): ReaderDocument {
   const [first] = passages;
   if (first === undefined) throw new Error("a document needs at least one passage");
-  const superseding = passages.find((passage) => passage.supersededBy !== null)?.supersededBy ?? null;
   return {
     noteId: first.noteId,
     title: first.title,
@@ -59,8 +57,7 @@ export function documentOf(passages: readonly Passage[]): ReaderDocument {
     meta: metaOf(first),
     passages,
     bagian: bagianOf(passages),
-    revised: superseding !== null,
-    newer: superseding,
+    revised: passages.some((passage) => passage.supersededBy !== null),
   };
 }
 
@@ -157,6 +154,18 @@ export function lastAtOrAbove(tops: readonly number[], y: number): number {
     } else high = middle - 1;
   }
   return found;
+}
+
+/**
+ * Where a passage is, in the words of the headings and the derived bagian number. A passage is a token-capped chunk, so it never
+ * gets a number of its own: the source's pasal, ayat and paragraph numbers are not ours to show or to imitate. A note with one
+ * bagian has nothing to number, so it shows the heading, or the note's title when it has none.
+ */
+export function whereOf(doc: ReaderDocument, passage: Passage): string {
+  const heading = passage.section?.split(HEADING_SEPARATOR).at(-1) ?? null;
+  if (doc.bagian.length === 1) return heading ?? doc.title;
+  const n = doc.bagian.find((entry) => entry.passages.some((candidate) => candidate.id === passage.id))?.n ?? 1;
+  return heading === null ? COPY.reader.bagianLabel(n) : `${COPY.reader.bagianLabel(n)} · ${heading}`;
 }
 
 export const bagianIndexOf = (doc: ReaderDocument, passage: PassageId): number => doc.bagian.findIndex((entry) => entry.passages.some((candidate) => candidate.id === passage));

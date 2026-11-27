@@ -1,8 +1,9 @@
 export type RevisionNoticeProps = {
   title: string;
   text: string;
-  action: string;
-  onAction: () => void;
+  /** Drawn only when both are given. */
+  action?: string;
+  onAction?: () => void;
 };
 
 const CLOCK = (
@@ -18,7 +19,7 @@ const ARROW = (
   </svg>
 );
 
-/** A calm notice at the top of a putusan that a later one replaced, with one action to open the newer ruling. */
+/** A calm notice at the top of a putusan that a later one replaced. It has an action only when there is somewhere to go. */
 export function RevisionNotice({ title, text, action, onAction }: RevisionNoticeProps) {
   return (
     <div className="rn">
@@ -27,10 +28,12 @@ export function RevisionNotice({ title, text, action, onAction }: RevisionNotice
         <span className="rn-t">{title}</span>
       </div>
       <p className="rn-x">{text}</p>
-      <button type="button" className="rn-a" onClick={onAction}>
-        <span>{action}</span>
-        {ARROW}
-      </button>
+      {action === undefined || onAction === undefined ? null : (
+        <button type="button" className="rn-a" onClick={onAction}>
+          <span>{action}</span>
+          {ARROW}
+        </button>
+      )}
     </div>
   );
 }

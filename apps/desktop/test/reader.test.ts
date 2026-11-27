@@ -3,10 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { citedOf, createClient, type Passage, type PassageId } from "@hpt/server/client";
+import { citedOf, createClient, emptyAnswer, type Answer, type Passage, type PassageId } from "@hpt/server/client";
 import { ARABIC, NEW_NOTE, OLD_NOTE, READER_CITED, READER_NOTE, READER_PASSAGES, REVISED_NEW, REVISED_OLD, SCENARIOS, makePassage, memoryPipe, scenarioHost, type ScenarioName } from "@hpt/server/testing";
+import { COPY } from "../src/renderer/chat/copy.ts";
 import { createChatStore, isBusy } from "../src/renderer/chat/store.ts";
-import { annotationsOf, bagianOf, blocksOf, citedIn, documentOf, headingBefore, lastAtOrAbove } from "../src/renderer/reader/model.ts";
+import { annotationsOf, bagianOf, blocksOf, citedIn, documentOf, headingBefore, lastAtOrAbove, whereOf } from "../src/renderer/reader/model.ts";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -61,9 +62,8 @@ describe("a note's bagian", () => {
     assert.equal(doc.meta, "Nomor 7 · Munas Uji XXX · 2000");
     assert.equal(doc.kindLabel, "Putusan");
     assert.equal(doc.revised, true);
-    assert.equal(doc.newer, REVISED_NEW[0]?.id, "the notice opens the passage that replaced the first replaced one");
     const current = documentOf(READER_PASSAGES);
-    assert.deepEqual([current.revised, current.newer], [false, null]);
+    assert.equal(current.revised, false);
     assert.deepEqual(current.bagian.map((entry) => entry.title), ["Pengertian kompos", "Bahan dan alat", "Cara membuat kompos", "Pematangan", "Pemakaian di kebun", "Hal yang dilarang", "Penutup"]);
     assert.throws(() => documentOf([]));
   });
@@ -177,11 +177,11 @@ describe("the reader in the chat store", () => {
     await host.close();
   });
 
-  it("follows a notice to the newer note, and shows only the answer to the question asked last", async () => {
+  it("moves to a passage of another note, and shows only the answer to the question asked last", async () => {
     const { store, host, turn } = await rig("reader-revised");
     store.getState().openReader(turn.key, id(OLD_NOTE, 1));
     store.getState().showPassage(id(NEW_NOTE, 1));
-    await until(() => store.getState().reader?.load.state === "ready", "the newer note");
+    await until(() => store.getState().reader?.load.state === "ready", "the other note");
     const { reader } = store.getState();
     assert.equal(reader?.noteId, NEW_NOTE);
     assert.deepEqual(reader?.load.state === "ready" ? reader.load.passages.map((entry) => entry.noteId) : null, REVISED_NEW.map(() => NEW_NOTE));
@@ -211,5 +211,80 @@ describe("the reader in the chat store", () => {
     store.getState().send("lanjut?");
     assert.equal(store.getState().reader, null);
     await host.close();
+  });
+});
+
+describe("the reader never imitates the source's numbering", () => {
+  const doc = documentOf(READER_PASSAGES);
+  const at = (ordinal: number) => READER_PASSAGES[ordinal - 1] as Passage;
+  const WORDS = /\b(paragraf|pasal|ayat)\b/i;
+
+  it("names a passage by its derived bagian and its heading, never by a number of its own", () => {
+    assert.equal(whereOf(doc, at(READER_CITED.S1)), "Bagian 3 · Tahap awal");
+    assert.equal(whereOf(doc, at(READER_CITED.S2)), "Bagian 4 · Pematangan");
+    assert.equal(whereOf(doc, at(READER_CITED.S3)), "Bagian 6 · Hal yang dilarang");
+  });
+
+  it("shows only the heading for a note with one bagian, and the note's title when it has no heading", () => {
+    const one = documentOf([passage("Satu judul", 1), passage("Satu judul", 2)]);
+    assert.equal(whereOf(one, one.passages[1] as Passage), "Satu judul");
+    const none = documentOf([passage(null, 1), passage(null, 2)]);
+    assert.equal(whereOf(none, none.passages[0] as Passage), none.title);
+    const untitled = documentOf([passage(null, 1), passage("B", 2)]);
+    assert.equal(whereOf(untitled, untitled.passages[0] as Passage), "Bagian 1");
+  });
+
+  it("has no paragraph, pasal or ayat word in any copy the reader can show", () => {
+    const samples = Object.values(COPY.reader).flatMap((entry) => {
+      if (typeof entry === "string") return [entry];
+      const text = entry as (...args: never[]) => unknown;
+      return [(text as (...args: unknown[]) => unknown)(2, 7, "Judul"), (text as (...args: unknown[]) => unknown)("Judul")].map(String);
+    });
+    assert.ok(samples.length > 20);
+    assert.deepEqual(samples.filter((sample) => WORDS.test(sample)), []);
+    assert.equal(WORDS.test(COPY.reader.citedCount(3)), false);
+    assert.equal(COPY.reader.citedCount(3), "3 dikutip");
+  });
+
+  it("builds every label of a fixture note from bagian and headings only", () => {
+    const labels = [
+      ...doc.bagian.map((entry) => `${COPY.reader.bagian(entry.n, doc.bagian.length)} ${entry.title ?? COPY.reader.untitled}`),
+      ...doc.passages.map((entry) => whereOf(doc, entry)),
+      COPY.reader.tocCount(doc.bagian.length, 3),
+    ];
+    assert.deepEqual(labels.filter((label) => WORDS.test(label) || /\(\d+\)/.test(label)), []);
+  });
+
+  it("has no ordinal marker in the article's source", () => {
+    const root = path.resolve(import.meta.dirname, "../src/renderer");
+    const files = ["reader/Article.tsx", "reader/AnswerPane.tsx", "reader/ReaderView.tsx", "styles/reader.css"].map((file) => fs.readFileSync(path.join(root, file), "utf8"));
+    assert.deepEqual(files.filter((text) => /rd-pn|ordinal/.test(text) || WORDS.test(text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""))), []);
+  });
+});
+
+describe("a cited passage with no verified excerpt", () => {
+  it("is cited and numbered, and has no marked words, when the checks dropped the quote", () => {
+    const passage = READER_PASSAGES[READER_CITED.S3 - 1] as Passage;
+    const answer: Answer = { ...emptyAnswer(), type: "answer", summary: [{ kind: "text", text: "Dasar" }, { kind: "cite", passages: [passage.id] }], quotes: [], notes: [], dalil: [] };
+    const annotations = annotationsOf(answer);
+    assert.deepEqual(annotations.get(passage.id), { number: 1, excerpts: [] });
+    const blocks = blocksOf(passage.text, annotations.get(passage.id)?.excerpts ?? []);
+    assert.ok(blocks.length > 0);
+    assert.equal(blocks.flatMap((block) => block.pieces).some((piece) => piece.quoted), false);
+  });
+
+  it("keeps the other passages' marks when only one of them lost its quote", () => {
+    const [first, third] = [READER_PASSAGES[READER_CITED.S1 - 1], READER_PASSAGES[READER_CITED.S3 - 1]] as [Passage, Passage];
+    const answer: Answer = {
+      ...emptyAnswer(),
+      type: "answer",
+      summary: [{ kind: "cite", passages: [first.id, third.id] }],
+      quotes: [{ passage: first.id, start: 0, end: 5, text: first.text.slice(0, 5) }],
+      notes: [],
+      dalil: [],
+    };
+    const annotations = annotationsOf(answer);
+    assert.equal(annotations.get(first.id)?.excerpts.length, 1);
+    assert.deepEqual(annotations.get(third.id)?.excerpts, []);
   });
 });

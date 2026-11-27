@@ -5,7 +5,7 @@ import type { Turn } from "../chat/store.ts";
 import { gistOf, viewOf } from "../chat/view.ts";
 import { Badge, CitedLink } from "../ui/index.ts";
 import { CiteNumber } from "./CiteNumber.tsx";
-import type { Annotation, Cited, ReaderDocument } from "./model.ts";
+import { whereOf, type Annotation, type Cited, type ReaderDocument } from "./model.ts";
 
 export type AnswerPaneProps = {
   turn: Turn;
@@ -20,11 +20,6 @@ export type AnswerPaneProps = {
 function snippetOf({ passage, note }: Cited): string {
   const [first] = note.excerpts;
   return `“${gistOf(first === undefined ? passage.text : passage.text.slice(first.start, first.end))}”`;
-}
-
-function whereOf({ passage }: Cited): string {
-  const tail = passage.section?.split(" › ").at(-1);
-  return tail === undefined ? COPY.reader.paragraph(passage.ordinal) : `${COPY.reader.paragraph(passage.ordinal)} · ${tail}`;
 }
 
 function Answer({ turn, annotations, current, onGo }: Pick<AnswerPaneProps, "turn" | "annotations" | "current" | "onGo">) {
@@ -56,7 +51,7 @@ function Answer({ turn, annotations, current, onGo }: Pick<AnswerPaneProps, "tur
   );
 }
 
-function CitedList({ cited, current, onGo }: Pick<AnswerPaneProps, "cited" | "current" | "onGo">) {
+function CitedList({ doc, cited, current, onGo }: Pick<AnswerPaneProps, "cited" | "current" | "onGo"> & { doc: ReaderDocument }) {
   return (
     <>
       <div className="rd-listhead">
@@ -70,7 +65,7 @@ function CitedList({ cited, current, onGo }: Pick<AnswerPaneProps, "cited" | "cu
             <CitedLink
               key={entry.passage.id}
               state={here ? "current" : "default"}
-              where={whereOf(entry)}
+              where={whereOf(doc, entry.passage)}
               snippet={snippetOf(entry)}
               status={here ? COPY.reader.reading : undefined}
               mark={<CiteNumber c={String(entry.note.number)} active={here} />}
@@ -89,7 +84,7 @@ export function AnswerPane({ turn, doc, annotations, cited, current, onGo }: Ans
     <>
       <Answer turn={turn} annotations={annotations} current={current} onGo={onGo} />
       {noCitations ? <p className="rd-none">{COPY.reader.notCited}</p> : null}
-      {doc !== null && cited.length > 0 ? <CitedList cited={cited} current={current} onGo={onGo} /> : null}
+      {doc !== null && cited.length > 0 ? <CitedList doc={doc} cited={cited} current={current} onGo={onGo} /> : null}
     </>
   );
 }

@@ -83,17 +83,7 @@ async function checkOpened(label: string, expected: PassageId): Promise<void> {
     const view = element.closest(".rd-scroll")?.getBoundingClientRect();
     return view === undefined ? false : box.top >= view.top && box.top < view.bottom;
   });
-  const shown = normalize(
-    await section.evaluate((element) =>
-      [...element.querySelectorAll(".rd-p, .rd-ar")]
-        .map((block) => {
-          const copy = block.cloneNode(true) as Element;
-          copy.querySelector(".rd-pn")?.remove();
-          return copy.textContent ?? "";
-        })
-        .join(" "),
-    ),
-  );
+  const shown = normalize((await section.locator(".rd-p, .rd-ar").allTextContents()).join(" "));
   const wanted = normalize(passage?.text ?? "");
   evidence[`${label}.noteMatches`] = true;
   evidence[`${label}.passageIsCurrent`] = (await section.getAttribute("data-current")) === "true";

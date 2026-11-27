@@ -10,8 +10,6 @@ export type ArticleProps = {
   annotations: ReadonlyMap<PassageId, Annotation>;
   current: PassageId;
   place: (id: PassageId) => (element: HTMLElement | null) => void;
-  /** Opens the passage that replaced a superseded one. */
-  onOpenNewer: (id: PassageId) => void;
 };
 
 function PieceView({ piece }: { piece: Piece }) {
@@ -32,11 +30,8 @@ function Pieces({ pieces }: { pieces: Block["pieces"] }) {
 /** The corpus text is only ever a text node, so a stray tag in a passage shows as the characters it is. */
 function PassageText({ passage, annotation }: { passage: Passage; annotation: Annotation | undefined }) {
   const blocks = blocksOf(passage.text, annotation?.excerpts ?? []);
-  const number = <span className="rd-pn">({passage.ordinal})</span>;
-  const leadsWithText = blocks[0]?.kind === "text";
   return (
     <>
-      {leadsWithText ? null : <div className="rd-pn rd-pn-own">({passage.ordinal})</div>}
       {blocks.map((block, index) =>
         block.kind === "arabic" ? (
           <div key={index} className="rd-dl">
@@ -46,7 +41,6 @@ function PassageText({ passage, annotation }: { passage: Passage; annotation: An
           </div>
         ) : (
           <p key={index} className="rd-p">
-            {index === 0 ? number : null}
             <Pieces pieces={block.pieces} />
           </p>
         ),
@@ -65,16 +59,16 @@ function Heading({ level, text, eyebrow }: { level: 2 | 3; text: string; eyebrow
   );
 }
 
-export function Article({ doc, annotations, current, place, onOpenNewer }: ArticleProps) {
+export function Article({ doc, annotations, current, place }: ArticleProps) {
   const hasContents = doc.bagian.length > 1;
   const bagianOfPassage = new Map(doc.bagian.flatMap((entry) => entry.passages.map((passage) => [passage.id, entry.n] as const)));
   return (
     <div className="rd-page">
-      {doc.newer === null ? null : (
+      {doc.revised ? (
         <div className="rd-notice">
-          <RevisionNotice title={COPY.reader.revisionTitle} text={COPY.reader.revisionText} action={COPY.reader.revisionAction} onAction={() => onOpenNewer(doc.newer as PassageId)} />
+          <RevisionNotice title={COPY.reader.revisionTitle} text={COPY.reader.revisionText} />
         </div>
-      )}
+      ) : null}
       {doc.passages.map((passage, index) => {
         const heading = headingBefore(passage, doc.passages[index - 1] ?? null);
         const annotation = annotations.get(passage.id);
