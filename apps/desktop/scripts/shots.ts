@@ -84,6 +84,7 @@ const SHOTS: readonly Shot[] = [
   { file: "53-margin-after-panel-and-sidebar", scenario: "margin-tall", after: openCloseAndToggleSidebar, frame: "D9.6 catatan pinggir tetap sejajar setelah panel Sumber dibuka lalu ditutup, dan sidebar disembunyikan lalu ditampilkan" },
   { file: "56-reader-tj-citation", scenario: "reader-tj", after: (page) => openFromCitation(page, 1), frame: "D9.18 Halaman buku: Tanya Jawab fiktif dibuka dari tanda kutip 1" },
   { file: "57-reader-tj-second", scenario: "reader-tj", after: (page) => openFromCitation(page, 2), frame: "D9.18 Halaman buku: Tanya Jawab bernomor satu baris, dibuka dari tanda kutip 2" },
+  { file: "58-sumber-arabic-rows", scenario: "arabic-rows", after: arabicRowsShowTheirBeginning, frame: "D9.20 baris Sumber satu baris dengan teks Arab panjang: awal di kanan, … di kiri; baris campuran tetap berurutan" },
   { file: "38-reader-closed-focus", scenario: "reader", after: closeWithEscape, frame: "Esc menutup, fokus kembali ke tanda kutip" },
 ];
 
@@ -275,6 +276,51 @@ async function citeOpensInPlace(page: Page): Promise<void> {
     return card !== undefined && list !== undefined && card.top >= list.top - 1 && card.bottom <= list.bottom + 1;
   });
   if (!inView) throw new Error("the opened card is not inside the panel's list");
+}
+
+type RowGeometry = { readonly text: string; readonly dir: string; readonly startsWithArabic: boolean; readonly cut: boolean; readonly line: { left: number; right: number }; readonly run: { left: number; right: number } | null; readonly latinLeft: number | null };
+
+/**
+ * A one-line row that starts with Arabic starts on the right: its first Arabic run is not clipped there, and when the row is too long
+ * the cut and its ellipsis are on the left. A row that starts with Latin keeps its order, the Latin to the left of the Arabic.
+ */
+async function arabicRowsShowTheirBeginning(page: Page): Promise<void> {
+  await openPanel(page);
+  const rows = await page.evaluate<RowGeometry[]>(() =>
+    [...document.querySelectorAll<HTMLElement>(".scard-line-text")].map((element) => {
+      const box = element.getBoundingClientRect();
+      const run = element.querySelector(".ar-run")?.getBoundingClientRect() ?? null;
+      const text = element.textContent ?? "";
+      const lead = element.firstChild;
+      const range = document.createRange();
+      if (lead !== null) range.selectNodeContents(lead);
+      const latin = lead?.nodeType === Node.TEXT_NODE && /\p{Script=Latin}/u.test(lead.textContent ?? "");
+      return {
+        text: text.slice(0, 24),
+        dir: getComputedStyle(element).direction,
+        startsWithArabic: /^[^\p{L}]*\p{Script=Arabic}/u.test(text),
+        cut: element.scrollWidth > element.clientWidth,
+        line: { left: box.left, right: box.right },
+        run: run === null ? null : { left: run.left, right: run.right },
+        latinLeft: latin ? range.getBoundingClientRect().left : null,
+      };
+    }),
+  );
+  const arabicRows = rows.filter((row) => row.run !== null);
+  if (arabicRows.length < 4) throw new Error(`expected four rows with Arabic, found ${arabicRows.length}`);
+  const problems = arabicRows.flatMap((row) => {
+    if (row.run === null) return [];
+    if (row.startsWithArabic) {
+      const found = [];
+      if (row.dir !== "rtl") found.push("is drawn left to right");
+      if (row.run.right > row.line.right + 1) found.push(`loses its beginning: the run reaches ${Math.round(row.run.right)} and the row ends at ${Math.round(row.line.right)}`);
+      return found.map((problem) => `"${row.text}" ${problem}`);
+    }
+    const inOrder = row.latinLeft !== null && row.latinLeft < row.run.left;
+    return row.dir === "ltr" && inOrder ? [] : [`"${row.text}" does not keep its reading order`];
+  });
+  if (problems.length > 0) throw new Error(`Arabic rows are wrong: ${problems.join("; ")}`);
+  if (!arabicRows.some((row) => row.startsWithArabic && row.cut)) throw new Error("no Arabic row is cut, so the check proves nothing");
 }
 
 async function hoverPanelIcon(page: Page): Promise<void> {
