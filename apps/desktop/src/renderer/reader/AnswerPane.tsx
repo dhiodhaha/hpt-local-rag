@@ -1,4 +1,6 @@
 import type { PassageId } from "@hpt/server/client";
+import type { ReactNode } from "react";
+import { ArabicText } from "../ArabicText.tsx";
 import { COPY } from "../chat/copy.ts";
 import { ProseView } from "../chat/ProseView.tsx";
 import type { Turn } from "../chat/store.ts";
@@ -17,9 +19,9 @@ export type AnswerPaneProps = {
 };
 
 /** What a row shows of a cited passage: the words the answer quotes when it quotes some, else the start of the passage. */
-function snippetOf({ passage, note }: Cited): string {
+function snippetOf({ passage, note }: Cited): ReactNode {
   const [first] = note.excerpts;
-  return `“${gistOf(first === undefined ? passage.text : passage.text.slice(first.start, first.end))}”`;
+  return <ArabicText text={`“${gistOf(first === undefined ? passage.text : passage.text.slice(first.start, first.end))}”`} />;
 }
 
 function Answer({ turn, annotations, current, onGo }: Pick<AnswerPaneProps, "turn" | "annotations" | "current" | "onGo">) {

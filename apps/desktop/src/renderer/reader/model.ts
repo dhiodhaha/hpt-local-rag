@@ -1,4 +1,5 @@
 import { citedOf, type Answer, type NoteId, type Passage, type PassageId } from "@hpt/server/client";
+import { ARABIC_CHAR, arabicRuns } from "../arabic.ts";
 import { COPY } from "../chat/copy.ts";
 import { SOURCE_TYPE_LABEL } from "../chat/view.ts";
 
@@ -94,27 +95,12 @@ export const citedIn = (doc: ReaderDocument, annotations: ReadonlyMap<PassageId,
 export type Piece = { readonly text: string; readonly quoted: boolean; readonly arabic: boolean };
 export type Block = { readonly kind: "text" | "arabic"; readonly pieces: readonly Piece[] };
 
-const ARABIC_CHARS = "\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF";
-const ARABIC_RUN = new RegExp(`[${ARABIC_CHARS}]+(?:[\\s\\u060C\\u061B\\u061F]+[${ARABIC_CHARS}]+)*`, "gu");
-const ARABIC_CHAR = new RegExp(`[${ARABIC_CHARS}]`, "gu");
 const LATIN_LETTER = /[A-Za-zÀ-ɏ]/g;
 
 /** A line that is mostly Arabic letters is drawn as a block of its own, right to left. Any other line keeps its Arabic as runs. */
 const ARABIC_BLOCK_SHARE = 0.6;
 
 const countOf = (text: string, pattern: RegExp): number => text.match(pattern)?.length ?? 0;
-
-function arabicRuns(text: string): { text: string; arabic: boolean }[] {
-  const parts: { text: string; arabic: boolean }[] = [];
-  let at = 0;
-  for (const match of text.matchAll(ARABIC_RUN)) {
-    if (match.index > at) parts.push({ text: text.slice(at, match.index), arabic: false });
-    parts.push({ text: match[0], arabic: true });
-    at = match.index + match[0].length;
-  }
-  if (at < text.length) parts.push({ text: text.slice(at), arabic: false });
-  return parts;
-}
 
 /**
  * A passage's text as blocks, one per non-empty line, each cut at the edges of the excerpts that overlap it. The offsets are the

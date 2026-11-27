@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { ArabicText } from "../ArabicText.tsx";
 import type { PassageId } from "@hpt/server/client";
 import { Badge, SourceTurnGroup } from "../ui/index.ts";
 import { COPY } from "./copy.ts";
@@ -63,7 +64,9 @@ function Card({ card, style, active, index, onOpen }: { card: PanelCard; style: 
       </div>
       {card.where === null ? null : <div className="meta">{card.where}</div>}
       <div className="sc-ring">{COPY.sourcesSummary}</div>
-      <p className="sum">{card.gist}</p>
+      <p className="sum">
+        <ArabicText text={card.gist} />
+      </p>
       {card.priorTurn === null ? null : <p className="meta">{COPY.priorTurn(card.priorTurn)}</p>}
     </div>
   );

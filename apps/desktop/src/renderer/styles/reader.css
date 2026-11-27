@@ -183,12 +183,6 @@
 .rd-ps[data-current="true"] mark {
   animation: m-fade var(--m-cite) var(--m-ease) both;
 }
-.rd-ar-run {
-  font-family: var(--font-arabic);
-  font-size: 1.25em;
-  line-height: 1;
-  unicode-bidi: isolate;
-}
 .rd-dl {
   margin-top: 16px;
   padding: 14px 20px 16px;

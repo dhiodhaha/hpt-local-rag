@@ -14,7 +14,7 @@ export type ArticleProps = {
 
 function PieceView({ piece }: { piece: Piece }) {
   const inner = piece.arabic ? (
-    <span className="rd-ar-run" lang="ar" dir="rtl">
+    <span className="ar-run" lang="ar" dir="rtl">
       {piece.text}
     </span>
   ) : (
