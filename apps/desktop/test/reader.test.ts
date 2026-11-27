@@ -7,7 +7,8 @@ import { citedOf, createClient, emptyAnswer, type Answer, type Passage, type Pas
 import { ARABIC, NEW_NOTE, OLD_NOTE, READER_CITED, READER_NOTE, READER_PASSAGES, REVISED_NEW, REVISED_OLD, SCENARIOS, makePassage, memoryPipe, scenarioHost, type ScenarioName } from "@hpt/server/testing";
 import { COPY } from "../src/renderer/chat/copy.ts";
 import { createChatStore, isBusy } from "../src/renderer/chat/store.ts";
-import { annotationsOf, bagianOf, blocksOf, citedIn, documentOf, headingBefore, lastAtOrAbove, whereOf } from "../src/renderer/reader/model.ts";
+import { structureOf } from "../src/renderer/reader/structure.ts";
+import { annotationsOf, bagianOf, citedIn, documentOf, headingBefore, lastAtOrAbove, whereOf } from "../src/renderer/reader/model.ts";
 
 const PERSON = { via: "enter", trusted: true, focused: true } as const;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,11 +71,11 @@ describe("a note's bagian", () => {
   });
 });
 
-describe("a passage as blocks", () => {
-  const pieces = (text: string, excerpts: { start: number; end: number }[] = []) => blocksOf(text, excerpts);
-  const flat = (blocks: ReturnType<typeof blocksOf>) => blocks.map((block) => block.pieces.map((piece) => piece.text).join("")).join("\n");
+describe("a passage as parts", () => {
+  const pieces = (text: string, excerpts: { start: number; end: number }[] = []) => structureOf(text, excerpts);
+  const flat = (blocks: ReturnType<typeof structureOf>) => blocks.map((block) => block.pieces.map((piece) => piece.text).join("")).join("\n");
 
-  it("makes one block per non-empty line and loses no character of them", () => {
+  it("makes one part per non-empty line and loses no character of them", () => {
     const text = "Baris satu.\n\n   \nBaris dua yang lebih panjang.\n";
     const blocks = pieces(text);
     assert.equal(blocks.length, 2);
@@ -104,21 +105,21 @@ describe("a passage as blocks", () => {
   it("keeps Arabic inside a Latin line as a run, and draws a line that is mostly Arabic as a block of its own", () => {
     const text = `Ungkapan ditulis ${ARABIC} dalam contoh.\n${ARABIC}\n“Terjemahannya.”`;
     const [inline, own, last] = pieces(text);
-    assert.equal(inline?.kind, "text");
+    assert.equal(inline?.kind, "plain");
     assert.deepEqual(inline?.pieces.map((piece) => [piece.text, piece.arabic]), [
       ["Ungkapan ditulis ", false],
       [ARABIC, true],
       [" dalam contoh.", false],
     ]);
-    assert.equal(own?.kind, "arabic");
-    assert.equal(last?.kind, "text");
+    assert.equal(own?.kind, "matn");
+    assert.equal(last?.kind, "translation");
     assert.equal(last?.pieces.some((piece) => piece.arabic), false);
   });
 
   it("marks an excerpt inside an Arabic block too", () => {
     const text = ARABIC;
     const [block] = pieces(text, [{ start: 0, end: 4 }]);
-    assert.equal(block?.kind, "arabic");
+    assert.equal(block?.kind, "matn");
     assert.equal(block?.pieces.some((piece) => piece.quoted), true);
     assert.equal(flat([block as never]), text);
   });
@@ -269,7 +270,7 @@ describe("a cited passage with no verified excerpt", () => {
     const answer: Answer = { ...emptyAnswer(), type: "answer", summary: [{ kind: "text", text: "Dasar" }, { kind: "cite", passages: [passage.id] }], quotes: [], notes: [], dalil: [] };
     const annotations = annotationsOf(answer);
     assert.deepEqual(annotations.get(passage.id), { number: 1, excerpts: [] });
-    const blocks = blocksOf(passage.text, annotations.get(passage.id)?.excerpts ?? []);
+    const blocks = structureOf(passage.text, annotations.get(passage.id)?.excerpts ?? []);
     assert.ok(blocks.length > 0);
     assert.equal(blocks.flatMap((block) => block.pieces).some((piece) => piece.quoted), false);
   });

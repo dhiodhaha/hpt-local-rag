@@ -1,22 +1,24 @@
-import { useEffect, useRef, useState } from "react";
-import { Aura, StateNotice, SuggestionChip } from "../ui/index.ts";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence, MotionConfig } from "motion/react";
+import type { PassageId } from "@hpt/server/client";
+import { MOTION } from "../motion.ts";
+import { StateNotice, TipButton } from "../ui/index.ts";
+import { ReaderLayer } from "../reader/index.ts";
 import { AllConversations } from "./AllConversations.tsx";
 import { ComposerBar } from "./ComposerBar.tsx";
 import { connectionOf } from "./connection.ts";
 import { useChat, useHost } from "./context.tsx";
+import { Conversation } from "./Conversation.tsx";
 import { COPY } from "./copy.ts";
+import { Home } from "./Home.tsx";
 import { provenanceOf, type Provenance } from "./provenance.ts";
 import { RiwayatLayer } from "./RiwayatLayer.tsx";
 import { stampOf } from "./riwayat.ts";
-import { ReaderLayer } from "../reader/index.ts";
+import { useLeaveHold } from "./useLeaveHold.ts";
 import { Sidebar } from "./Sidebar.tsx";
-import { SourcesPanel, type EarlierPanel } from "./SourcesPanel.tsx";
+import { SourcesPanel, type EarlierPanel, type Preview } from "./SourcesPanel.tsx";
 import { isBusy } from "./store.ts";
-import { TurnView } from "./TurnView.tsx";
-import { panelOf } from "./view.ts";
-
-const COLUMN = 688;
-const FOLLOW_PX = 120;
+import { conversationShowsDisclaimer, panelOf } from "./view.ts";
 
 type ScreenName = "all" | "home" | "chat";
 
@@ -32,36 +34,14 @@ function HostNotice() {
   return null;
 }
 
-function useFollow(turnCount: number, conversation: string | null) {
-  const scroller = useRef<HTMLDivElement>(null);
-  const column = useRef<HTMLDivElement>(null);
-  const following = useRef(true);
+const PANEL_ICON = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="16" rx="3" />
+    <path d="M9.5 4v16" />
+  </svg>
+);
 
-  useEffect(() => {
-    const element = scroller.current;
-    const inner = column.current;
-    if (element === null || inner === null) return;
-    const onScroll = () => {
-      following.current = element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_PX;
-    };
-    const observer = new ResizeObserver(() => {
-      if (following.current) element.scrollTo({ top: element.scrollHeight });
-    });
-    element.addEventListener("scroll", onScroll, { passive: true });
-    observer.observe(inner);
-    return () => {
-      element.removeEventListener("scroll", onScroll);
-      observer.disconnect();
-    };
-  }, [turnCount > 0]);
-
-  useEffect(() => {
-    following.current = true;
-    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-  }, [turnCount, conversation]);
-
-  return { scroller, column };
-}
+const isShortcut = (event: KeyboardEvent, key: string) => (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === key;
 
 export function ChatScreen() {
   const host = useHost();
@@ -74,8 +54,10 @@ export function ChatScreen() {
   const history = useChat((state) => state.history);
   const busy = useChat(isBusy);
   const { setDraft, chooseModel, openReader, send, cancel, retry, newConversation, refreshHistory } = useChat((state) => state);
-  const [closed, setClosed] = useState(false);
-  const { scroller, column } = useFollow(turns.length, conversation);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const hits = useRef(0);
 
   const latest = turns.at(-1);
   const panel = latest === undefined || screen === "all" ? null : panelOf(latest.run);
@@ -92,6 +74,7 @@ export function ChatScreen() {
   const firstVisit = history.state === "ready" && history.conversations.length === 0;
   const stored = history.conversations.find((entry) => entry.id === conversation);
   const title = stored?.title ?? turns[0]?.question ?? "";
+  const firstTurn = turns[0]?.key ?? null;
 
   useEffect(() => {
     if (hostReady) void refreshHistory();
@@ -104,22 +87,58 @@ export function ChatScreen() {
   }, [refreshHistory]);
 
   useEffect(() => {
+    setSourcesOpen(false);
+    setPreview(null);
+  }, [firstTurn]);
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "k") return;
-      event.preventDefault();
-      if (canStartNew) newConversation();
-      requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>("textarea")?.focus());
+      if (isShortcut(event, "k")) {
+        event.preventDefault();
+        if (canStartNew) newConversation();
+        requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>("textarea")?.focus());
+      } else if (isShortcut(event, "b")) {
+        event.preventDefault();
+        setSidebarOpen((open) => !open);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [canStartNew, newConversation]);
 
-  const ask = (text: string, provenance: Provenance) => {
-    setClosed(false);
-    send(text, provenance);
+  const ask = (text: string, provenance: Provenance) => send(text, provenance);
+  const setSources = (next: boolean) => {
+    if (next === sourcesOpen) return;
+    if (!next) setPreview((current) => (current === null ? null : { turn: current.turn, passage: current.passage }));
+    setSourcesOpen(next);
+    if (!next) requestAnimationFrame(() => document.querySelector<HTMLElement>(".cv-src")?.focus());
   };
-  const showPanel = panel !== null && !closed;
-  const active = reader?.passage ?? null;
+  const showSource = (turnKey: string, passage: PassageId) => {
+    setSources(true);
+    hits.current += 1;
+    setPreview({ turn: turnKey, passage, hit: hits.current });
+  };
+  const toggleSource = (turnKey: string, passage: PassageId) => setPreview(preview?.turn === turnKey && preview.passage === passage ? null : { turn: turnKey, passage });
+  const showPanel = panel !== null && sourcesOpen;
+
+  useEffect(() => {
+    if (showPanel) document.querySelector<HTMLElement>("[data-panel='sources']")?.focus({ preventScroll: true });
+  }, [showPanel]);
+
+  const closeFromKeyboard = useRef(() => {});
+  closeFromKeyboard.current = () => setSources(false);
+  useEffect(() => {
+    if (!showPanel || reader !== null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (!document.querySelector("[data-panel='sources']")?.contains(document.activeElement)) return;
+      event.preventDefault();
+      closeFromKeyboard.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showPanel, reader]);
+  const active = reader?.passage ?? (showPanel ? (preview?.passage ?? null) : null);
   const bar = (
     <ComposerBar
       draft={draft}
@@ -135,71 +154,69 @@ export function ChatScreen() {
     />
   );
 
-  const home = (
-    <>
-      <Aura state={draft === "" ? "idle" : "compose"} />
-      <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 32px 40px", textAlign: "center" }}>
-        <h1 style={{ fontFamily: "var(--font-read)", fontWeight: 400, fontSize: 46, lineHeight: 1.1, letterSpacing: "-.015em", textWrap: "balance" }}>{COPY.greeting}</h1>
-        <p style={{ fontSize: 17, fontWeight: 500, lineHeight: 1.5, color: "var(--color-ink-muted)", marginTop: 12, textWrap: "balance" }}>{COPY.greetingHint}</p>
-        <div style={{ width: COLUMN, marginTop: 36, textAlign: "left" }}>
-          <div style={{ marginBottom: 16 }}>
-            <HostNotice />
-          </div>
-          {bar}
-          {firstVisit ? (
-            <div style={{ marginTop: 28 }}>
-              <div className="lbl" style={{ padding: "0 4px 10px", color: "var(--color-ink-muted)" }}>
-                {COPY.riwayat.suggestLabel}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {COPY.riwayat.suggestions.map((text) => (
-                  <SuggestionChip key={text} label={text} disabled={unusable} onClick={(event) => ask(text, provenanceOf("suggestion", event))} />
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </>
-  );
+  const screens = {
+    all: <AllConversations />,
+    home: <Home draft={draft} notice={<HostNotice />} bar={bar} firstVisit={firstVisit} unusable={unusable} onAsk={ask} />,
+    chat: (
+      <Conversation
+        turns={turns}
+        conversation={conversation}
+        title={title}
+        meta={`${COPY.questionCount(turns.length)} · ${stampOf(turns[0]?.at ?? Date.now(), new Date())}`}
+        active={active}
+        sources={panel === null ? null : panel.heading.count}
+        sourcesOpen={showPanel}
+        disclaimer={conversationShowsDisclaimer(turns.map((turn) => turn.run))}
+        notice={<HostNotice />}
+        bar={bar}
+        onSources={() => setSources(!sourcesOpen)}
+        onCite={showSource}
+        onOpen={openReader}
+        onPick={(option, event) => ask(option, provenanceOf("clarify", event))}
+        onRetry={(event) => retry(provenanceOf("retry", event))}
+        onCancel={cancel}
+      />
+    ),
+  } as const;
 
-  const chat = (
-    <>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, height: 68, flex: "none", padding: "0 20px 0 28px" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
-          <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--color-ink-muted)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
-            {COPY.questionCount(turns.length)} · {stampOf(turns[0]?.at ?? Date.now(), new Date())}
-          </div>
-        </div>
-      </div>
-      <div ref={scroller} className="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "24px 0 28px" }}>
-        <div ref={column} style={{ width: COLUMN, margin: "0 auto" }}>
-          {turns.map((turn, index) => (
-            <TurnView key={turn.key} turn={turn} latest={index === turns.length - 1} active={active} onCite={(id) => openReader(turn.key, id)} onPick={(option, event) => ask(option, provenanceOf("clarify", event))} onRetry={(event) => retry(provenanceOf("retry", event))} onCancel={cancel} />
-          ))}
-          <div style={{ marginTop: 16 }}>
-            <HostNotice />
-          </div>
-        </div>
-      </div>
-      <div style={{ flex: "none", width: COLUMN, margin: "0 auto", padding: "0 0 18px" }}>{bar}</div>
-    </>
-  );
+  const leaving = useLeaveHold(screenName, "chat", "home", MOTION.restartFadeOutMs);
+  const lastChat = useRef<ReactNode>(null);
+  if (screenName === "chat") lastChat.current = screens.chat;
+  const shownName = leaving ? "chat" : screenName;
 
-  const screens = { all: <AllConversations />, home, chat } as const;
+  useEffect(() => {
+    if (leaving || screenName !== "home") return;
+    if (document.activeElement === null || document.activeElement === document.body) document.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+  }, [leaving, screenName]);
 
   return (
-    <div style={{ position: "relative", display: "flex", width: "100%", height: "100%", background: "var(--color-surface)" }} data-host={host.kind} data-screen={screenName}>
+    <MotionConfig reducedMotion="user">
+    <div className="cs-root" data-host={host.kind} data-screen={screenName} data-sidebar={sidebarOpen ? "open" : "closed"}>
       <div style={{ display: "contents" }} inert={reader !== null}>
-        <Sidebar connection={connection} canStartNew={canStartNew} onNew={newConversation} />
-        <main style={{ position: "relative", flex: 1, minWidth: 0, margin: showPanel ? "8px 0" : "8px 8px 8px 0", background: "var(--color-ground)", borderRadius: showPanel ? "var(--radius-lg) 0 0 var(--radius-lg)" : "var(--radius-lg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {screens[screenName]}
+        <div className="rw-wrap" inert={!sidebarOpen}>
+          <Sidebar connection={connection} canStartNew={canStartNew} onNew={newConversation} onHide={() => setSidebarOpen(false)} />
+        </div>
+        <main className="cv-main" data-panel={showPanel ? "open" : "closed"}>
+          {sidebarOpen ? null : (
+            <div className="cv-show">
+              <TipButton label={COPY.showSidebar} kbd={COPY.sidebarKbd} onClick={() => setSidebarOpen(true)}>
+                {PANEL_ICON}
+              </TipButton>
+            </div>
+          )}
+          <div key={shownName} className="cv-screen" data-leaving={leaving} inert={leaving}>
+            {leaving ? lastChat.current : screens[screenName]}
+          </div>
         </main>
-        {panel === null || !showPanel || latest === undefined ? null : <SourcesPanel panel={panel} turnKey={latest.key} earlier={earlier} active={active} onOpen={openReader} onClose={() => setClosed(true)} />}
+        <AnimatePresence>
+          {panel === null || !showPanel || latest === undefined ? null : (
+            <SourcesPanel key="sumber-panel" panel={panel} turnKey={latest.key} earlier={earlier} preview={preview} onPreview={toggleSource} onOpen={openReader} onClose={() => setSources(false)} />
+          )}
+        </AnimatePresence>
       </div>
       <ReaderLayer />
       <RiwayatLayer />
     </div>
+    </MotionConfig>
   );
 }

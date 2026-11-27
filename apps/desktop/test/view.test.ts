@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { recordScenario } from "@hpt/server/testing";
 import { emptyRun, reduceRun, runOf } from "../src/renderer/chat/run.ts";
-import { DISCLAIMER_SHOWN, gistOf, panelOf, plainTextOf, showsDisclaimer, tallyOf, viewOf, whereOf } from "../src/renderer/chat/view.ts";
+import { plainTextOf } from "../src/renderer/chat/article.ts";
+import { gistOf, quotedOf, whereOf } from "../src/renderer/chat/passage.ts";
+import { DISCLAIMER_SHOWN, conversationShowsDisclaimer, panelOf, showsDisclaimer, viewOf } from "../src/renderer/chat/view.ts";
 
 const cardOf = (run: ReturnType<typeof runOf>) => {
   const view = viewOf(run);
@@ -11,25 +13,23 @@ const cardOf = (run: ReturnType<typeof runOf>) => {
 };
 
 describe("the Doop states, derived from real engine runs", () => {
-  it("D7.1: the headline shows as verifying while the summary streams with a pending citation, and skeleton rows wait under it", async () => {
+  it("D7.1: the headline shows as verifying while the summary streams with a pending citation, and a placeholder waits under it", async () => {
     const card = cardOf(runOf(await recordScenario("settled", "verifying")));
-    assert.equal(card?.headline?.verifying, true);
-    assert.equal(card?.summaryStreaming, true);
-    assert.equal(card?.summary?.some((span) => span.kind === "cite" && span.passages === null), true);
-    assert.deepEqual(card?.rows, [
-      { kind: "skeleton", section: "notes" },
-      { kind: "skeleton", section: "dalil" },
-    ]);
+    assert.equal(card?.lead.headline?.verifying, true);
+    assert.equal(card?.lead.streaming, true);
+    assert.equal(card?.lead.summary?.some((span) => span.kind === "cite" && span.passages === null), true);
+    assert.equal(card?.pending, true);
     assert.equal(card?.finished, false);
   });
 
-  it("D7.2: settled drops the verify state, and the rows become counts of the items that passed", async () => {
+  it("D7.2: settled drops the verify state and the placeholder, and the blocks hold the items that passed", async () => {
     const run = runOf(await recordScenario("settled"));
     const card = cardOf(run);
-    assert.equal(card?.headline?.verifying, false);
+    assert.equal(card?.lead.headline?.verifying, false);
     assert.equal(card?.finished, true);
-    assert.deepEqual(card?.rows.map((row) => (row.kind === "items" ? [row.section, row.count] : null)), [["notes", 2], ["dalil", 1]]);
-    assert.deepEqual(tallyOf(run), { searched: 5, cited: 3 });
+    assert.equal(card?.pending, false);
+    assert.deepEqual([card?.notes?.items.length, card?.dalil.length], [2, 1]);
+    assert.equal(card?.cited.length, 3);
   });
 
   it("D7.3: a restart shows the rechecking view and keeps the Sumber panel, with its numbers gone", async () => {
@@ -48,10 +48,10 @@ describe("the Doop states, derived from real engine runs", () => {
     assert.equal(run.restart?.count, 1);
   });
 
-  it("D7.4: the unverified reference is on the card before the headline exists", async () => {
+  it("D7.4: the unverified reference is in the answer before the headline exists", async () => {
     const card = cardOf(runOf(await recordScenario("unverified-first", "reference")));
     assert.equal(card?.unverified.length, 1);
-    assert.equal(card?.headline, null);
+    assert.equal(card?.lead.headline, null);
     assert.equal(panelOf(runOf(await recordScenario("unverified-first")))?.unverified.length, 1);
   });
 
@@ -97,8 +97,8 @@ describe("the Doop states, derived from real engine runs", () => {
       run = reduceRun(run, event);
       const view = viewOf(run);
       if (view.kind !== "answer") continue;
-      assert.ok(view.card.notes.length >= notes && view.card.dalil.length >= dalil, "a count went down");
-      notes = view.card.notes.length;
+      assert.ok((view.card.notes?.items.length ?? 0) >= notes && view.card.dalil.length >= dalil, "a count went down");
+      notes = view.card.notes?.items.length ?? 0;
       dalil = view.card.dalil.length;
       const shown = panelOf(run)?.shown ?? [];
       const current = new Map<string, number>(shown.flatMap((card) => (card.number === null ? [] : [[card.id, card.number] as const])));
@@ -114,12 +114,33 @@ describe("the Doop states, derived from real engine runs", () => {
   });
 });
 
+describe("a Sumber row's quoted line", () => {
+  it("shows the answer's own quote, with an ellipsis where the sentence goes on, and the start of the passage when nothing was quoted", async () => {
+    const panel = panelOf(runOf(await recordScenario("settled")));
+    const [first, second, third] = panel?.shown ?? [];
+    assert.deepEqual([first?.line, first?.quoted, first?.copy], ["“…menumpuk sisa daun…”", true, "menumpuk sisa daun"]);
+    assert.deepEqual([second?.line, second?.quoted], ["“Kompos yang belum matang tidak boleh dipakai.”", true]);
+    assert.equal(third?.quoted, false);
+    assert.equal(third?.line.startsWith("Daun kering juga"), true);
+  });
+
+  it("puts an ellipsis only on the side where the sentence goes on", () => {
+    const text = "Kalimat pertama. Kutipan di tengah kalimat ini terus berlanjut.";
+    const start = text.indexOf("Kutipan");
+    const quote = { start, end: start + 21, text: "Kutipan di tengah kal" };
+    assert.equal(quotedOf(text, quote, 90), "Kutipan di tengah kal…");
+    assert.equal(quotedOf(text, { start: 4, end: 20, text: "pertama. Kutipan" }, 90), "…pertama. Kutipan…");
+    assert.equal(quotedOf("Ini kalimat.", { start: 0, end: 12, text: "Ini kalimat." }, 90), "Ini kalimat.");
+  });
+});
+
 describe("the copy button", () => {
-  it("copies the headline and the summary as plain text, without citation marks", async () => {
+  it("copies the whole answer as plain text, without citation marks: the lead, the dalil and the notes", async () => {
     const card = cardOf(runOf(await recordScenario("settled")));
     const text = card === null ? "" : plainTextOf(card);
-    assert.ok(text.startsWith("Menurut HPT, kompos boleh dibuat dari sisa daun."));
-    assert.ok(text.includes("Kompos boleh dibuat dari sisa daun. Namun kompos harus matang."));
+    assert.ok(text.startsWith("Menurut HPT, kompos boleh dibuat dari sisa daun. Kompos boleh dibuat dari sisa daun. Namun kompos harus matang."));
+    assert.ok(text.includes("Dalilnya. Fatwa Uji 2 memuat teks ini:"));
+    assert.ok(text.includes("Yang perlu diperhatikan. Satu pengecualian: Kompos belum matang tidak boleh dipakai."));
     assert.equal(text.includes("[S"), false);
   });
 });
@@ -129,6 +150,7 @@ describe("source card text", () => {
     assert.equal(gistOf("Pendek   saja."), "Pendek saja.");
     const long = gistOf(`${"kata ".repeat(60)}akhir`);
     assert.ok(long.endsWith("…") && long.length <= 152);
+    assert.ok(gistOf(`${"kata ".repeat(120)}akhir`, 360).length > long.length, "a preview is longer than a gist");
   });
 
   it("joins the locator parts the passage has", () => {
@@ -157,6 +179,15 @@ describe("the disclaimer", () => {
     assert.equal(await shown("settled", "thinking"), false);
     assert.equal(showsDisclaimer(viewOf(emptyRun())), false);
     assert.equal(await shown("restart", "rechecking"), false);
+  });
+
+  it("shows under the question box once the conversation holds a real answer, and never before", async () => {
+    const answered = runOf(await recordScenario("settled"));
+    const refused = runOf(await recordScenario("clarify"));
+    assert.equal(conversationShowsDisclaimer([]), false);
+    assert.equal(conversationShowsDisclaimer([refused]), false);
+    assert.equal(conversationShowsDisclaimer([answered]), true);
+    assert.equal(conversationShowsDisclaimer([refused, answered]), true, "a real answer after a reply that is not one");
   });
 
   it("has one decision per answer type", () => {

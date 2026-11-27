@@ -32,10 +32,11 @@ const SHOTS: readonly Shot[] = [
   { file: "01-working", scenario: "settled", cut: "thinking", frame: "C5 Berpikir" },
   { file: "02-d7-1-verifying", scenario: "settled", cut: "verifying", frame: "D7.1" },
   { file: "03-d7-2-settled", scenario: "settled", frame: "D7.2" },
+  { file: "03b-d9-6-settled-top", scenario: "settled", after: scrollToTop, frame: "D9.6 jawaban dari atas" },
   { file: "04-d7-3-rechecking", scenario: "restart", cut: "rechecking", frame: "D7.3" },
   { file: "05-d7-3-after-retry", scenario: "restart", frame: "D7.2 after a retry" },
-  { file: "06-d7-4-unverified", scenario: "unverified-first", frame: "D7.4" },
-  { file: "07-fallback", scenario: "fallback", frame: "D7.2 with the fallback notice" },
+  { file: "06-d7-4-unverified", scenario: "unverified-first", after: scrollToTop, frame: "D7.4" },
+  { file: "07-fallback", scenario: "fallback", after: scrollToTop, frame: "D7.2 with the fallback notice" },
   { file: "08-out-of-scope", scenario: "out-of-scope", frame: "6c Di luar cakupan" },
   { file: "09-declined", scenario: "declined", frame: "6d Ditolak" },
   { file: "10-insufficient", scenario: "insufficient", frame: "6b Rujukan belum cukup" },
@@ -46,7 +47,7 @@ const SHOTS: readonly Shot[] = [
   { file: "15-withheld", scenario: "withheld", frame: "StateNotice (withheld, D10d)" },
   { file: "16-follow-up", scenario: "follow-up", followUp: "Bagaimana kalau kompos belum matang?", frame: "D6.2 Lanjutan" },
   { file: "17-model-menu", scenario: "settled", idle: true, after: openModelMenu, frame: "D6.16 pemilih model" },
-  { file: "18-dalil-open", scenario: "settled", after: openFirstRow, frame: "Dalil / Catatan dibuka" },
+  { file: "18-many-dalil", scenario: "many-dalil", after: scrollToTop, frame: "D9.14 semua dalil ditulis di jawaban, tanpa lipatan" },
   { file: "19-riwayat-list", scenario: "riwayat", idle: true, after: openNewestConversation, frame: "D6.2 Lanjutan, dibuka dari riwayat" },
   { file: "20-riwayat-row-menu", scenario: "riwayat", idle: true, after: openRowMenu, frame: "D6.5 aksi baris" },
   { file: "21-riwayat-delete-confirm", scenario: "riwayat", idle: true, after: openDeleteConfirm, frame: "D6.5b konfirmasi hapus" },
@@ -65,7 +66,24 @@ const SHOTS: readonly Shot[] = [
   { file: "34-reader-revised", scenario: "reader-revised", after: (page) => openFromCard(page), frame: "D6.9 putusan direvisi" },
   { file: "35-reader-revised-passages", scenario: "reader-revised", after: openRevisedPassages, frame: "D6.9 bagian yang diubah" },
   { file: "37-reader-entering", scenario: "reader", after: enteringWithMotion, motion: true, frame: "gerak masuk, 90 ms setelah dibuka" },
-  { file: "39-sources-card-hover", scenario: "settled", after: hoverSecondCard, frame: "kartu Sumber yang kini membuka pembaca: sorotan di bawah kursor" },
+  { file: "39-sources-card-hover", scenario: "settled", after: hoverSecondCard, frame: "D9.4 tertutup, arahkan kursor" },
+  { file: "40-sumber-closed", scenario: "settled", frame: "D9.4 panel Sumber tertutup, tombol Sumber di kepala" },
+  { file: "41-sumber-cards", scenario: "settled", after: openPanel, frame: "D9.4 kartu satu baris" },
+  { file: "42-sumber-card-focus", scenario: "settled", after: focusSecondCard, frame: "D9.4 tertutup, fokus papan ketik" },
+  { file: "43-sumber-preview", scenario: "settled", after: (page) => previewFromCitation(page, 2), frame: "D9.4 terbuka, pratinjau dari nomor kutipan 2" },
+  { file: "44-sumber-preview-arabic", scenario: "many-dalil", after: previewLongArabicCard, frame: "D9.4 pratinjau dengan teks Arab panjang terbungkus" },
+  { file: "45-margin-active", scenario: "settled", after: hoverMargin, frame: "D9.8a catatan pinggir dengan Buka sumber" },
+  { file: "46-sidebar-tooltip", scenario: "riwayat", idle: true, after: hoverPanelIcon, frame: "D9.9 tooltip ikon panel" },
+  { file: "47-sidebar-collapsed", scenario: "riwayat", idle: true, after: collapseSidebar, frame: "D9.9 sidebar disembunyikan dengan Ctrl B" },
+  { file: "48-chat-sidebar-collapsed", scenario: "settled", after: collapseSidebar, frame: "D9.9 percakapan dengan sidebar disembunyikan" },
+  { file: "49-follow-up-scrolled", scenario: "follow-up", followUp: "Bagaimana kalau kompos belum matang?", after: scrollToTop, frame: "D9.8a dua pertanyaan, digulir ke atas di bawah kabur atas" },
+  { file: "50-inferred", scenario: "inferred", after: scrollToTop, frame: "D9.11 jawaban disimpulkan: catatan inferensi di paragraf pembuka, tanpa pil dan tanpa catatan di baris aksi" },
+  { file: "51-margin-once", scenario: "many-dalil", after: scrollToTop, frame: "D9.6 catatan pinggir: tiap sumber sekali, berurutan, sejajar dengan baris pertama yang mengutipnya" },
+  { file: "52-sidebar-active-hover", scenario: "riwayat", idle: true, after: hoverActiveRow, frame: "D9.9 baris aktif disorot: judul terpotong sebelum tombol titik tiga" },
+  { file: "54-cite-opens-in-place", scenario: "settled", after: citeOpensInPlace, frame: "D9.15 nomor kutipan membuka kartunya di tempat: tidak ada yang terbang, kartu terlihat dan menyala sekali" },
+  { file: "53-margin-after-panel-and-sidebar", scenario: "margin-tall", after: openCloseAndToggleSidebar, frame: "D9.6 catatan pinggir tetap sejajar setelah panel Sumber dibuka lalu ditutup, dan sidebar disembunyikan lalu ditampilkan" },
+  { file: "56-reader-tj-citation", scenario: "reader-tj", after: (page) => openFromCitation(page, 1), frame: "D9.18 Halaman buku: Tanya Jawab fiktif dibuka dari tanda kutip 1" },
+  { file: "57-reader-tj-second", scenario: "reader-tj", after: (page) => openFromCitation(page, 2), frame: "D9.18 Halaman buku: Tanya Jawab bernomor satu baris, dibuka dari tanda kutip 2" },
   { file: "38-reader-closed-focus", scenario: "reader", after: closeWithEscape, frame: "Esc menutup, fokus kembali ke tanda kutip" },
 ];
 
@@ -85,18 +103,37 @@ async function assertNoSourceNumbering(page: Page): Promise<void> {
   if (found.length > 0) throw new Error(`the reader shows source-like numbering: ${found.join(" | ")}`);
 }
 
-async function openFromCitation(page: Page, number: number): Promise<void> {
-  await page.locator("[data-card='answer'] .c", { hasText: new RegExp(`^${number}$`) }).first().click();
+/** A citation mark opens the Sumber panel on that source's preview. Only "Buka sumber" in the preview opens Baca putusan. */
+async function previewFromCitation(page: Page, number: number): Promise<void> {
+  await page.locator("[data-card='answer'] .an-p .c", { hasText: new RegExp(`^${number}$`) }).first().click();
+  await page.locator("[data-source][data-open='true']").waitFor();
+  await page.waitForTimeout(350);
+}
+
+async function openReaderFromPreview(page: Page): Promise<void> {
+  await page.locator("[data-source][data-open='true']").getByRole("button", { name: "Buka sumber" }).click();
   await page.locator("[data-reader][data-load='ready']").waitFor();
   await page.waitForTimeout(500);
   await assertNoSourceNumbering(page);
 }
 
+async function openFromCitation(page: Page, number: number): Promise<void> {
+  await previewFromCitation(page, number);
+  await openReaderFromPreview(page);
+}
+
+async function openPanel(page: Page): Promise<void> {
+  const button = page.locator(".cv-src");
+  if ((await button.count()) > 0) await button.click();
+  await page.locator("[data-panel='sources']").waitFor();
+  await page.waitForTimeout(350);
+}
+
 async function openFromCard(page: Page, index = 0): Promise<void> {
-  await page.locator("[data-source]").nth(index).click();
-  await page.locator("[data-reader][data-load='ready']").waitFor();
-  await page.waitForTimeout(500);
-  await assertNoSourceNumbering(page);
+  await openPanel(page);
+  await page.locator("[data-source] .scard-head").nth(index).click();
+  await page.locator("[data-source][data-open='true']").waitFor();
+  await openReaderFromPreview(page);
 }
 
 async function openSumberTab(page: Page): Promise<void> {
@@ -118,7 +155,8 @@ async function openRevisedPassages(page: Page): Promise<void> {
 }
 
 async function enteringWithMotion(page: Page): Promise<void> {
-  await page.locator("[data-card='answer'] .c").first().click();
+  await previewFromCitation(page, 1);
+  await page.locator("[data-source][data-open='true']").getByRole("button", { name: "Buka sumber" }).click();
   await page.locator(".rd").waitFor();
   await page.evaluate(() =>
     document.querySelector(".rd")?.getAnimations({ subtree: true }).forEach((animation) => {
@@ -129,7 +167,128 @@ async function enteringWithMotion(page: Page): Promise<void> {
 }
 
 async function hoverSecondCard(page: Page): Promise<void> {
-  await page.locator("[data-source]").nth(1).hover();
+  await openPanel(page);
+  await page.locator("[data-source]").nth(0).hover();
+  await page.waitForTimeout(250);
+}
+
+async function focusSecondCard(page: Page): Promise<void> {
+  await openPanel(page);
+  await page.locator("[data-source] .scard-head").nth(1).focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await page.waitForTimeout(250);
+}
+
+async function previewLongArabicCard(page: Page): Promise<void> {
+  await openPanel(page);
+  await page.locator("[data-source] .scard-head").nth(3).click();
+  await page.locator("[data-source][data-open='true']").waitFor();
+  await page.waitForTimeout(350);
+}
+
+async function hoverMargin(page: Page): Promise<void> {
+  await page.locator("[data-margin]").first().hover();
+  await page.waitForTimeout(350);
+}
+
+/** The title ends before the "more" button in every combination of active, hover and focus, so the two never overlap. */
+async function hoverActiveRow(page: Page): Promise<void> {
+  await openNewestConversation(page);
+  const row = page.locator(".rw-side .rr").first();
+  const overlap = () =>
+    row.evaluate((element) => {
+      const more = element.querySelector(".more");
+      const title = element.querySelector(".rr-t");
+      if (more === null || title === null || getComputedStyle(more).display === "none") return false;
+      return title.getBoundingClientRect().right > more.getBoundingClientRect().left + 0.5;
+    });
+  await row.hover();
+  if (await overlap()) throw new Error("the active row's title overlaps its more button on hover");
+  await row.locator(".body").focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  if (await overlap()) throw new Error("the active row's title overlaps its more button on keyboard focus");
+  await row.hover();
+}
+
+/**
+ * Every margin note is level with the first line that cites it, or sits right under the note before it because that one is in its
+ * way. A note anywhere lower than that is stale.
+ */
+async function assertNotesAligned(page: Page, when: string): Promise<void> {
+  const rows = await page.evaluate(() => {
+    const article = document.querySelector("[data-card='answer']");
+    if (article === null) return [];
+    const first = new Map<string, Element>();
+    for (const mark of article.querySelectorAll<HTMLElement>("[data-cite]")) if (!first.has(mark.dataset["cite"] ?? "")) first.set(mark.dataset["cite"] ?? "", mark);
+    return [...article.querySelectorAll<HTMLElement>(".an-margin [data-margin]")].map((note) => {
+      const box = note.getBoundingClientRect();
+      const mark = first.get(note.dataset["margin"] ?? "")?.getBoundingClientRect();
+      return { id: note.dataset["margin"] ?? "", top: box.top, bottom: box.bottom, wanted: mark === undefined ? null : mark.top };
+    });
+  });
+  const GAP = 12;
+  const stale = rows.flatMap((row, index) => {
+    const before = rows[index - 1];
+    const allowed = before === undefined ? (row.wanted ?? row.top) : Math.max(row.wanted ?? row.top, before.bottom + GAP);
+    return row.top > allowed + 2 ? [`${row.id} is ${Math.round(row.top - allowed)}px below where it belongs`] : [];
+  });
+  if (stale.length > 0) throw new Error(`margin notes are stale ${when}: ${stale.join("; ")}`);
+}
+
+async function openCloseAndToggleSidebar(page: Page): Promise<void> {
+  await page.locator(".cv-scroll").evaluate((element) => element.scrollTo({ top: 0 }));
+  await assertNotesAligned(page, "at the start");
+  await page.locator(".cv-src").click();
+  await page.waitForTimeout(900);
+  await assertNotesAligned(page, "with the Sumber panel open");
+  await page.locator(".sx-head .icon-btn").first().click();
+  await page.waitForTimeout(900);
+  await assertNotesAligned(page, "after the Sumber panel closed");
+  await page.keyboard.press("Control+b");
+  await page.waitForTimeout(700);
+  await assertNotesAligned(page, "with the sidebar hidden");
+  await page.keyboard.press("Control+b");
+  await page.waitForTimeout(700);
+  await assertNotesAligned(page, "with the sidebar shown again");
+}
+
+/** A citation number opens its card where it stands: nothing is added to the page outside the app, the card is in view and lit once. */
+async function citeOpensInPlace(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const added: string[] = [];
+    new MutationObserver((records) => records.forEach((record) => record.addedNodes.forEach((node) => added.push((node as HTMLElement).className ?? node.nodeName)))).observe(document.body, { childList: true });
+    (window as unknown as { __added: string[] }).__added = added;
+  });
+  await page.locator("[data-card='answer'] .an-p .c", { hasText: /^2$/ }).first().click();
+  await page.locator("[data-source][data-open='true']").waitFor();
+  await page.waitForTimeout(60);
+  const lit = await page.locator("[data-source][data-open='true'] .scard-hit").count();
+  if (lit !== 1) throw new Error(`the opened card should be lit once, found ${lit}`);
+  await page.waitForTimeout(900);
+  const added = await page.evaluate(() => (window as unknown as { __added: string[] }).__added);
+  if (added.length > 0) throw new Error(`something was added to the page body while the card opened: ${added.join(", ")}`);
+  const inView = await page.evaluate(() => {
+    const card = document.querySelector("[data-source][data-open='true']")?.getBoundingClientRect();
+    const list = document.querySelector(".sx-body")?.getBoundingClientRect();
+    return card !== undefined && list !== undefined && card.top >= list.top - 1 && card.bottom <= list.bottom + 1;
+  });
+  if (!inView) throw new Error("the opened card is not inside the panel's list");
+}
+
+async function hoverPanelIcon(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /Sembunyikan sidebar/ }).hover();
+  await page.waitForTimeout(800);
+}
+
+async function collapseSidebar(page: Page): Promise<void> {
+  await page.keyboard.press("Control+b");
+  await page.waitForTimeout(500);
+}
+
+async function scrollToTop(page: Page): Promise<void> {
+  await page.locator(".cv-scroll").evaluate((element) => element.scrollTo({ top: 0 }));
   await page.waitForTimeout(250);
 }
 
@@ -142,10 +301,6 @@ async function closeWithEscape(page: Page): Promise<void> {
 async function openModelMenu(page: Page): Promise<void> {
   await page.getByRole("button", { name: /Opus/ }).click();
   await page.getByRole("menu").waitFor();
-}
-
-async function openFirstRow(page: Page): Promise<void> {
-  await page.locator("[data-row]").first().click();
 }
 
 async function openNewestConversation(page: Page): Promise<void> {

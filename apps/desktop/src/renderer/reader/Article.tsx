@@ -1,14 +1,18 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { Passage, PassageId } from "@hpt/server/client";
 import { COPY } from "../chat/copy.ts";
 import { CitedPassage, RevisionNotice } from "../ui/index.ts";
 import { CiteNumber } from "./CiteNumber.tsx";
-import { blocksOf, headingBefore, type Annotation, type Block, type Piece, type ReaderDocument } from "./model.ts";
+import { headingBefore, type Annotation, type Piece, type ReaderDocument } from "./model.ts";
+import { structureOf } from "./structure.ts";
+import type { Landed } from "./useReaderScroll.ts";
 
 export type ArticleProps = {
   doc: ReaderDocument;
   annotations: ReadonlyMap<PassageId, Annotation>;
   current: PassageId;
+  /** The passage the last jump went to. Only a jump lights its marked words. */
+  landed: Landed;
   place: (id: PassageId) => (element: HTMLElement | null) => void;
 };
 
@@ -23,29 +27,37 @@ function PieceView({ piece }: { piece: Piece }) {
   return piece.quoted ? <mark>{inner}</mark> : inner;
 }
 
-function Pieces({ pieces }: { pieces: Block["pieces"] }) {
+function Pieces({ pieces }: { pieces: readonly Piece[] }) {
   return pieces.map((piece, index) => <PieceView key={index} piece={piece} />);
 }
 
-/** The corpus text is only ever a text node, so a stray tag in a passage shows as the characters it is. */
+/**
+ * The corpus text is only ever a text node, so a stray tag in a passage shows as the characters it is. It is set as a page of a book:
+ * the parts structureOf found carry their kind, and the stylesheet draws a kind as a run-in head, a hanging item, a centred matn or a
+ * narrower translation. What structureOf did not recognise is a plain paragraph.
+ */
 function PassageText({ passage, annotation }: { passage: Passage; annotation: Annotation | undefined }) {
-  const blocks = blocksOf(passage.text, annotation?.excerpts ?? []);
+  const excerpts = annotation?.excerpts;
+  const parts = useMemo(() => structureOf(passage.text, excerpts ?? []), [passage.text, excerpts]);
   return (
-    <>
-      {blocks.map((block, index) =>
-        block.kind === "arabic" ? (
-          <div key={index} className="rd-dl">
-            <p className="rd-ar" lang="ar" dir="rtl">
-              <Pieces pieces={block.pieces} />
-            </p>
-          </div>
+    <div className="rd-bk" lang="id">
+      {parts.map((part, index) =>
+        part.kind === "matn" ? (
+          <p key={index} className="rd-ar" lang="ar" dir="rtl">
+            <Pieces pieces={part.pieces} />
+          </p>
         ) : (
-          <p key={index} className="rd-p">
-            <Pieces pieces={block.pieces} />
+          <p key={index} className="rd-p" data-kind={part.kind} data-depth={part.depth} data-lead={part.leadIn ? "true" : undefined}>
+            {part.head.length === 0 ? null : (
+              <span className="rd-hd">
+                <Pieces pieces={part.head} />
+              </span>
+            )}
+            <Pieces pieces={part.pieces} />
           </p>
         ),
       )}
-    </>
+    </div>
   );
 }
 
@@ -59,7 +71,7 @@ function Heading({ level, text, eyebrow }: { level: 2 | 3; text: string; eyebrow
   );
 }
 
-export function Article({ doc, annotations, current, place }: ArticleProps) {
+export function Article({ doc, annotations, current, landed, place }: ArticleProps) {
   const hasContents = doc.bagian.length > 1;
   const bagianOfPassage = new Map(doc.bagian.flatMap((entry) => entry.passages.map((passage) => [passage.id, entry.n] as const)));
   return (
@@ -89,7 +101,7 @@ export function Article({ doc, annotations, current, place }: ArticleProps) {
         }
         const n = bagianOfPassage.get(passage.id) ?? 1;
         return (
-          <section key={passage.id} ref={place(passage.id)} className="rd-ps" data-passage={passage.id} data-current={current === passage.id}>
+          <section key={passage.id} ref={place(passage.id)} className="rd-ps" data-passage={passage.id} data-current={current === passage.id} data-landed={landed.id === passage.id ? landed.flip : undefined}>
             {heading === null ? null : <Heading level={heading.level} text={heading.text} eyebrow={hasContents ? COPY.reader.bagianLabel(n) : null} />}
             {body}
           </section>

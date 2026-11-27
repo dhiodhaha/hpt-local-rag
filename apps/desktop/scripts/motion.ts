@@ -40,7 +40,7 @@ const names = new Set<string>();
 for (let frame = 0; Date.now() - started < 9000; frame += 1) {
   const sample = await page.evaluate((): Omit<Sample, "ms"> => {
     const turn = document.querySelector("[data-turn]");
-    const summary = turn?.querySelector("[data-card='answer'] > p");
+    const summary = turn?.querySelector("[data-card='answer'] .an-p");
     const running = document.getAnimations().flatMap((animation) => {
       const name = "animationName" in animation ? String((animation as CSSAnimation).animationName) : `transition:${(animation as CSSTransition).transitionProperty}`;
       return animation.playState === "running" ? [name] : [];

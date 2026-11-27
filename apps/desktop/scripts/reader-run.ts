@@ -98,25 +98,30 @@ await openChosenConversation();
 await shot("1-conversation-opened");
 
 const latest = page.locator("[data-turn]").last();
-const firstMark = latest.locator("[data-card='answer'] .c").first();
+const firstMark = latest.locator("[data-card='answer'] .an-p .c").first();
 const markNumber = Number((await firstMark.textContent()) ?? "0");
 const viaMark = chosen.cited[markNumber - 1] as PassageId;
 await firstMark.click();
+const preview = page.locator("[data-source][data-open='true']");
+await preview.waitFor();
+evidence["markOpensPreviewNotReader"] = (await page.locator("[data-reader]").count()) === 0 && (await preview.getAttribute("data-source")) === viaMark;
+await preview.getByRole("button", { name: "Buka sumber" }).click();
 await checkOpened("fromCitation", viaMark);
 await shot("2-from-citation");
 await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
 evidence["escapeClosed"] = (await page.locator("[data-reader]").count()) === 0;
-evidence["focusReturnedToCitation"] = await page.evaluate(() => document.activeElement?.className === "c" && document.activeElement.closest("[data-card='answer']") !== null);
+evidence["focusReturnedToOpenButton"] = await page.evaluate(() => document.activeElement?.textContent === "Buka sumber" && document.activeElement.closest("[data-source]") !== null);
 
 const otherCard = chosen.cited.find((id) => id !== viaMark) as PassageId;
-await page.locator(`[data-source='${otherCard}']`).first().click();
+await page.locator(`[data-source='${otherCard}'] .scard-head`).first().click();
+await page.locator(`[data-source='${otherCard}'][data-open='true']`).getByRole("button", { name: "Buka sumber" }).click();
 await checkOpened("fromCard", otherCard);
 await shot("3-from-card");
 await page.getByRole("button", { name: "Kembali ke jawaban" }).click();
 await page.waitForTimeout(400);
 evidence["backClosed"] = (await page.locator("[data-reader]").count()) === 0;
-evidence["focusReturnedToCard"] = await page.evaluate((id) => document.activeElement?.getAttribute("data-source") === id, otherCard);
+evidence["focusReturnedToCard"] = await page.evaluate((id) => document.activeElement?.closest("[data-source]")?.getAttribute("data-source") === id, otherCard);
 
 await app.close();
 index.close();

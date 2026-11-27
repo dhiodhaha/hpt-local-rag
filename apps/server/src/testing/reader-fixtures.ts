@@ -97,3 +97,50 @@ export const REVISED_NEW: readonly Passage[] = note(
 );
 
 export const REVISED_ORDER: readonly Passage[] = [...REVISED_OLD, ...REVISED_NEW];
+
+/**
+ * A fictional Tanya Jawab note, written the way the collection's Tanya Jawab pages are laid out: a numbered question with its title
+ * on the same line, the asker in brackets, "Jawab:" in the middle of a line, lettered items, numbered points, a hadith lead-in, the
+ * Arabic on a line of its own, "Artinya:" and a narrator. Nothing here is corpus text.
+ */
+export const TJ_NOTE: NoteId = "putusan/tja-uji-2";
+export const TJ_TITLE = "Tanya Jawab Agama Uji 2";
+
+const TJ_ARABIC_ONE = "كَتَبَ الْكَاتِبُ الْكِتَابَ فِي الْمَسْجِدِ بَعْدَ صَلَاةِ الْعَصْرِ";
+const TJ_ARABIC_TWO = "جَلَسَ الطُّلَّابُ فِي الْفَصْلِ وَقَرَؤُوا الدَّرْسَ بِهُدُوءٍ";
+
+export const TJ_QUOTE_ONE = "cukup menghadap kiblat ketika takbiratul ihram bila mudah dilakukan";
+export const TJ_QUOTE_TWO = "boleh dikerjakan sambil duduk bila tidak mungkin berdiri";
+
+const TJ_TEXTS: readonly string[] = [
+  [
+    "3. Shalat sunnah di kendaraan Tanya: Saya sering bepergian dengan bus antarkota pada malam hari. Bolehkah shalat sunnah dikerjakan sambil duduk di kursi bus, dan bagaimana arah kiblatnya? Mohon penjelasan. (Nur Hidayah, Kab. Banyumas) Jawab: Ada dua hal yang Anda tanyakan, yakni:",
+    "a. Hukum shalat sunnah di atas kendaraan.",
+    "b. Arah kiblat selama kendaraan berjalan.",
+    "1. Shalat sunnah boleh dikerjakan sambil duduk di kendaraan. Rukuk dan sujud cukup dengan isyarat, dan isyarat sujud dibuat lebih rendah daripada isyarat rukuk. Dasarnya antara lain:",
+    "a. Hadis riwayat Perawi Uji 1:",
+    TJ_ARABIC_ONE,
+    "Artinya: “Penulis menulis kitab itu di masjid setelah shalat Ashar.” (HR. Perawi Uji 1)",
+    "b. Hadis riwayat Perawi Uji 2 pula: Artinya: “Para pelajar duduk di kelas dan membaca pelajaran dengan tenang.” (HR. Perawi Uji 2)",
+    `2. Mengenai arah kiblat, ${TJ_QUOTE_ONE}, lalu shalat diteruskan mengikuti arah kendaraan sampai salam. Shalat fardu tetap dikerjakan dengan turun dari kendaraan bila waktunya memungkinkan.`,
+    "Wallahu a'lam bish-shawab.",
+  ].join("\n"),
+  [
+    `1. Shalat di kapal laut Tanya: Saya sering menyeberang dengan kapal feri selama tiga jam. Bolehkah shalat Zuhur dikerjakan di atas kapal bila tidak ada tempat untuk berdiri? (Siti Aminah, Kab. Cilacap) Jawab: Shalat di atas kapal ${TJ_QUOTE_TWO}, dan menghadap kiblat sedapat mungkin. Dasarnya hadis riwayat Perawi Uji 3:`,
+    TJ_ARABIC_TWO,
+    "Artinya: “Nabi shalat di atas perahu sambil duduk karena tidak mampu berdiri.” (HR. Perawi Uji 3)",
+    "2. Jamak karena hujan Tanya: Apakah shalat Magrib dan Isya boleh dijamak di masjid ketika hujan deras? (Ahmad Fauzi, Kota Bandung) Jawab: Boleh, bila hujan itu menyulitkan jamaah untuk datang ke masjid pada waktu Isya.",
+  ].join("\n"),
+  [
+    "4. Qashar bagi sopir",
+    "Tanya:",
+    "Apakah sopir truk lintas provinsi boleh mengqashar shalat selama perjalanan? Bila boleh, sampai berapa lama?",
+    "(Hendra, Jl. Melati 12, Kota Surabaya)",
+    "Jawab:",
+    "Sopir yang menempuh perjalanan jauh boleh mengqashar shalat selama ia masih dalam perjalanan.",
+  ].join("\n"),
+];
+
+export const TJ_PASSAGES: readonly Passage[] = TJ_TEXTS.map((text, index) =>
+  makePassage(index + 1, text, { id: `${TJ_NOTE}#${index + 1}` as PassageId, noteId: TJ_NOTE, title: TJ_TITLE, section: "Bab Shalat", sourceType: "tanya_jawab", number: "2", year: 2019, publishedIn: "Suara Uji" }),
+);

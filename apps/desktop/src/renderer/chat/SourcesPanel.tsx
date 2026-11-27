@@ -1,90 +1,149 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { motion, useIsPresent, useReducedMotion } from "motion/react";
 import { ArabicText } from "../ArabicText.tsx";
+import { tidyCorpus } from "../arabic.ts";
 import type { PassageId } from "@hpt/server/client";
-import { Badge, SourceTurnGroup } from "../ui/index.ts";
+import { Button, SourceTurnGroup } from "../ui/index.ts";
+import { MOTION } from "../motion.ts";
 import { COPY } from "./copy.ts";
+import { BUTTON_RADII, contentFade, ICON, LABEL, OPEN_SPRING, SURFACE, SURFACE_RADII } from "./panelSpring.ts";
+import { revealInScroller } from "./scroll.ts";
+import { BOOK } from "./SumberIcon.tsx";
 import type { PanelCard, SourcesPanel as Panel } from "./view.ts";
 
 export type EarlierPanel = { readonly turn: number; readonly turnKey: string; readonly question: string; readonly panel: Panel };
 
-/** A card opens the reader at its passage. `turnKey` names the turn whose answer the card belongs to. */
+/** The card a preview is open on: the turn whose answer cites it, and the passage. `hit` counts the clicks on a mark or margin note that opened it, and is absent when the card itself was clicked. */
+export type Preview = { readonly turn: string; readonly passage: PassageId; readonly hit?: number };
+
+/** `turnKey` names the turn whose answer the card belongs to. */
 export type OpenSource = (turnKey: string, id: PassageId) => void;
+
+/** True until the surface has grown. Cards that are there from the start come in with the panel, not one by one. */
+const PanelGrowing = createContext(false);
 
 export type SourcesPanelProps = {
   panel: Panel;
   /** The turn the current panel belongs to. */
   turnKey: string;
   earlier: readonly EarlierPanel[];
-  active: PassageId | null;
+  /** The card that shows its preview, or null when every card is closed. */
+  preview: Preview | null;
+  /** A card was clicked: it opens its preview in place, or closes it. */
+  onPreview: OpenSource;
+  /** "Buka sumber": the reader. Only this opens it. */
   onOpen: OpenSource;
   onClose: () => void;
 };
 
-const RADIUS_BIG = "var(--radius-md)";
+const statusLabel = (card: PanelCard): string => (card.status === "active" ? COPY.status.active : COPY.status.superseded);
 
-function cornersOf(index: number, total: number): CSSProperties {
-  if (total === 1) return { borderRadius: RADIUS_BIG };
-  if (index === 0) return { borderRadius: `${RADIUS_BIG} ${RADIUS_BIG} 6px 6px` };
-  return index === total - 1 ? { borderRadius: `6px 6px ${RADIUS_BIG} ${RADIUS_BIG}` } : { borderRadius: 6 };
+/** The quote in full, a small line saying what kind of source it is and whether it still stands, and the two ways on. */
+function CardMore({ card, open, onOpen }: { card: PanelCard; open: boolean; onOpen: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard.writeText(card.copy).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    });
+  };
+  return (
+    <div className="scard-more" inert={!open}>
+      <div className="scard-more-in">
+        <div className="scard-more-pad">
+          <p className="scard-quote" data-quoted={card.quoted}>
+            <ArabicText text={tidyCorpus(card.preview).trim()} />
+          </p>
+          <div className="scard-meta">{[card.typeLabel, statusLabel(card), card.where].filter((part): part is string => part !== null).join(" · ")}</div>
+          {card.priorTurn === null ? null : <div className="scard-meta">{COPY.priorTurn(card.priorTurn)}</div>}
+          <div className="scard-acts">
+            <Button label={COPY.article.openSource} onClick={onOpen} />
+            <Button tone="ghost" label={copied ? COPY.copiedQuote : COPY.copyQuote} onClick={copy} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-/** The entrance class is dropped when it ends, so React moving the card to a new place never replays it. */
-function Card({ card, style, active, index, onOpen }: { card: PanelCard; style: CSSProperties; active: boolean; index: number; onOpen: () => void }) {
+/**
+ * A row is a number, the title, one quoted line and a status dot until it is clicked, then the same row grows in place (D9.20). The
+ * dot carries its meaning in words too: the row's accessible name ends with "Berlaku" or "Direvisi", and the legend under the list
+ * says what the colours stand for. Once the panel has grown, an open row scrolls into view, and a row opened from a mark or margin note
+ * (`hit`) is lit by a soft fade so the eye finds it. Nothing travels to the row. The entrance class is dropped when it ends, so React
+ * moving the row to a new place never replays it.
+ */
+function Card({ card, open, hit, index, onToggle, onOpen }: { card: PanelCard; open: boolean; hit: number | undefined; index: number; onToggle: () => void; onOpen: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [entering, setEntering] = useState(true);
-  useEffect(() => {
-    if (active) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [active]);
+  const growing = useContext(PanelGrowing);
+  const reduced = useReducedMotion() === true;
+  const [entering, setEntering] = useState(!open && !growing);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!open || growing || element === null) return;
+    revealInScroller(element, reduced ? "instant" : "smooth");
+  }, [open, growing, hit, reduced]);
+  const status = statusLabel(card);
   return (
     <div
       ref={ref}
       className={entering ? "scard m-source" : "scard"}
-      style={{ ...style, "--i": index, ...(active ? { boxShadow: "inset 0 0 0 1.5px var(--color-accent)" } : {}) } as CSSProperties}
+      style={{ "--i": index } as CSSProperties}
       data-source={card.id}
-      role="button"
-      tabIndex={0}
-      aria-label={COPY.reader.openSource(card.title)}
-      onClick={onOpen}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
-        event.preventDefault();
-        onOpen();
-      }}
+      data-open={open}
       onAnimationEnd={(event) => {
         if (event.target === event.currentTarget) setEntering(false);
       }}
     >
-      <div className="h">
+      <button type="button" className="scard-head" aria-expanded={open} aria-label={COPY.sourceRow(open, card.title, status)} onClick={onToggle}>
         <span className={card.number === null ? "num wait" : "num"}>{card.number ?? "·"}</span>
-        <div className="nm">{card.title}</div>
-      </div>
-      <div className="badges">
-        <Badge tone="kind" t={card.typeLabel} />
-        {card.status === "active" ? <Badge tone="berlaku" t="Berlaku" /> : <Badge tone="direvisi" t="Direvisi" />}
-      </div>
-      {card.where === null ? null : <div className="meta">{card.where}</div>}
-      <div className="sc-ring">{COPY.sourcesSummary}</div>
-      <p className="sum">
-        <ArabicText text={card.gist} />
-      </p>
-      {card.priorTurn === null ? null : <p className="meta">{COPY.priorTurn(card.priorTurn)}</p>}
+        <span className="nm">{card.title}</span>
+        <span className="scard-dot" data-status={card.status} role="img" aria-label={status} title={status} />
+        <span className="scard-line">
+          <span className="scard-line-in">
+            <span className="scard-line-text">
+              <ArabicText text={card.line} />
+            </span>
+          </span>
+        </span>
+      </button>
+      <CardMore card={card} open={open} onOpen={onOpen} />
+      {hit === undefined || growing ? null : <span key={hit} className="scard-hit" aria-hidden="true" />}
+    </div>
+  );
+}
+
+/** What the two dots mean, once under the whole list. */
+function Legend() {
+  return (
+    <div className="scard-legend">
+      <span>
+        <span className="scard-dot" data-status="active" aria-hidden="true" />
+        {COPY.status.active}
+      </span>
+      <span>
+        <span className="scard-dot" data-status="superseded" aria-hidden="true" />
+        {COPY.status.superseded}
+      </span>
     </div>
   );
 }
 
 const CHEVRON = (
-  <svg style={{ marginLeft: "auto" }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
     <path d="m6 9 6 6 6-6" />
   </svg>
 );
 
-type Opening = { active: PassageId | null; open: (id: PassageId) => void };
+type Cluster = { preview: Preview | null; onPreview: OpenSource; onOpen: OpenSource };
 
-function Cards({ cards, active, open }: { cards: readonly PanelCard[] } & Opening) {
-  return cards.map((card, index) => <Card key={card.id} card={card} style={cornersOf(index, cards.length)} active={active === card.id} index={index} onOpen={() => open(card.id)} />);
+function Cards({ cards, turnKey, preview, onPreview, onOpen }: { cards: readonly PanelCard[]; turnKey: string } & Cluster) {
+  return cards.map((card, index) => (
+    <Card key={card.id} card={card} index={index} open={preview?.turn === turnKey && preview.passage === card.id} hit={preview?.turn === turnKey && preview.passage === card.id ? preview.hit : undefined} onToggle={() => onPreview(turnKey, card.id)} onOpen={() => onOpen(turnKey, card.id)} />
+  ));
 }
 
-function Current({ panel, active, open }: { panel: Panel } & Opening) {
+function Current({ panel, turnKey, ...cluster }: { panel: Panel; turnKey: string } & Cluster) {
   const [unfolded, setUnfolded] = useState(false);
   const { folded } = panel;
   return (
@@ -92,11 +151,11 @@ function Current({ panel, active, open }: { panel: Panel } & Opening) {
       {panel.hint === null ? null : (
         <p style={{ padding: "0 6px 10px", fontSize: 12.5, fontWeight: 500, lineHeight: 1.45, color: "var(--color-ink-muted)" }}>{panel.hint === "numbers-follow" ? COPY.numbersFollow : COPY.numbersReturn}</p>
       )}
-      <Cards cards={panel.shown} active={active} open={open} />
+      <Cards cards={panel.shown} turnKey={turnKey} {...cluster} />
       {panel.unverified.map((reference) => (
         <div
           key={reference.asStated}
-          style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 10, padding: "12px 16px", borderRadius: "var(--radius-md)", border: "1px dashed var(--color-rule)", background: "var(--color-warn-soft)", color: "var(--color-warn)", fontSize: 13, fontWeight: 500, lineHeight: 1.45 }}
+          style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 10, padding: "12px 20px", borderRadius: "var(--radius-lg)", background: "var(--color-warn-soft)", color: "var(--color-warn)", fontSize: 13, fontWeight: 500, lineHeight: 1.45 }}
         >
           <svg style={{ flex: "none", marginTop: 1 }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="10" />
@@ -120,8 +179,8 @@ function Current({ panel, active, open }: { panel: Panel } & Opening) {
             {CHEVRON}
           </button>
           {unfolded ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 8 }}>
-              <Cards cards={folded.cards} active={active} open={open} />
+            <div className="sx-list" style={{ marginTop: 8 }}>
+              <Cards cards={folded.cards} turnKey={turnKey} {...cluster} />
             </div>
           ) : null}
         </>
@@ -130,15 +189,19 @@ function Current({ panel, active, open }: { panel: Panel } & Opening) {
   );
 }
 
-function Earlier({ group, active, onOpen }: { group: EarlierPanel; active: PassageId | null; onOpen: OpenSource }) {
-  const [open, setOpen] = useState(false);
-  const shown = group.panel.shown;
+function Earlier({ group, ...cluster }: { group: EarlierPanel } & Cluster) {
+  const targeted = cluster.preview?.turn === group.turnKey;
+  const [open, setOpen] = useState(targeted);
+  useEffect(() => {
+    if (targeted) setOpen(true);
+  }, [targeted]);
+  const { shown } = group.panel;
   return (
     <>
       <SourceTurnGroup state="earlier" turn={`Pertanyaan ${group.turn}`} count={COPY.panelBadge(shown.length, "dikutip")} question={group.question} onClick={() => setOpen(!open)} />
       {open ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <Cards cards={shown} active={active} open={(id) => onOpen(group.turnKey, id)} />
+        <div className="sx-list">
+          <Cards cards={shown} turnKey={group.turnKey} {...cluster} />
         </div>
       ) : null}
     </>
@@ -152,40 +215,71 @@ const CLOSE = (
 );
 
 /** The cards of a panel and of the earlier questions, the part the reader's Sumber tab shows too. */
-export function SourcesBody({ panel, turnKey, earlier, active, onOpen }: Omit<SourcesPanelProps, "onClose">) {
+export function SourcesBody({ panel, turnKey, earlier, preview, onPreview, onOpen }: Omit<SourcesPanelProps, "onClose">) {
+  const cluster = { preview, onPreview, onOpen };
   return (
     <>
-      <Current panel={panel} active={active} open={(id) => onOpen(turnKey, id)} />
+      <Current panel={panel} turnKey={turnKey} {...cluster} />
       {earlier.length === 0 ? null : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 14 }}>
+        <div className="sx-list" style={{ marginTop: 14 }}>
           {earlier.map((group) => (
-            <Earlier key={group.turn} group={group} active={active} onOpen={onOpen} />
+            <Earlier key={group.turn} group={group} {...cluster} />
           ))}
         </div>
       )}
+      <Legend />
     </>
   );
 }
 
-export function SourcesPanel({ panel, turnKey, earlier, active, onOpen, onClose }: SourcesPanelProps) {
+/**
+ * The panel is the surface the Sumber button turns into. While it grows, its title travels from the button's label and everything
+ * else waits; while it shrinks home it leaves the layout, so the conversation takes its room back at once. Under reduced motion the
+ * surface does not move: it only fades.
+ */
+export function SourcesPanel({ panel, turnKey, earlier, preview, onPreview, onOpen, onClose }: SourcesPanelProps) {
+  const present = useIsPresent();
+  const reduced = useReducedMotion() === true;
+  const [growing, setGrowing] = useState(true);
+  useEffect(() => {
+    if (reduced) setGrowing(false);
+  }, [reduced]);
+  const fade = contentFade(reduced ? 0 : MOTION.sourcesOffsetPx);
   return (
-    <aside
-      aria-label={COPY.sources}
-      data-panel="sources"
-      style={{ width: 408, flex: "none", margin: "8px 8px 8px 0", background: "var(--color-ground)", borderRadius: "0 var(--radius-lg) var(--radius-lg) 0", borderLeft: "1px solid var(--color-rule)", display: "flex", flexDirection: "column", overflow: "hidden" }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, height: 68, flex: "none", padding: "0 12px 0 24px" }}>
-        <div style={{ fontSize: 15, fontWeight: 600 }}>{COPY.sources}</div>
-        <span style={{ fontSize: 12, fontWeight: 600, padding: "2px 9px", borderRadius: "var(--radius-full)", background: "var(--color-surface)", color: "var(--color-ink-muted)", fontVariantNumeric: "tabular-nums" }}>
-          {COPY.panelBadge(panel.heading.count, panel.heading.label)}
-        </span>
-        <button type="button" className="icon-btn" style={{ marginLeft: "auto", cursor: "pointer" }} aria-label={COPY.sourcesClose} onClick={onClose}>
-          {CLOSE}
-        </button>
-      </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 3 }}>
-        <SourcesBody panel={panel} turnKey={turnKey} earlier={earlier} active={active} onOpen={onOpen} />
-      </div>
-    </aside>
+    <PanelGrowing value={growing}>
+      <motion.aside
+        layoutId={SURFACE}
+        tabIndex={-1}
+        inert={!present}
+        aria-label={COPY.sources}
+        data-panel="sources"
+        data-closing={!present}
+        className="sx"
+        style={SURFACE_RADII}
+        transition={{ layout: OPEN_SPRING }}
+        initial={reduced ? { opacity: 0 } : undefined}
+        animate={{ opacity: 1 }}
+        exit={reduced ? { opacity: 0 } : undefined}
+        onLayoutAnimationComplete={() => setGrowing(false)}
+      >
+        <div className="sx-head">
+          <motion.span layoutId={ICON} transition={{ layout: OPEN_SPRING }} style={{ display: "inline-flex" }}>
+            {BOOK}
+          </motion.span>
+          <motion.div layoutId={LABEL} transition={{ layout: OPEN_SPRING }} style={{ fontSize: 15, fontWeight: 600 }}>
+            {COPY.sources}
+          </motion.div>
+          <motion.span className="sx-count" {...fade}>
+            {COPY.panelBadge(panel.heading.count, panel.heading.label)}
+          </motion.span>
+          <motion.button type="button" className="icon-btn" style={{ marginLeft: "auto", cursor: "pointer", ...BUTTON_RADII }} aria-label={COPY.sourcesCloseAria} onClick={onClose} {...fade}>
+            {CLOSE}
+          </motion.button>
+        </div>
+        <motion.div className="sx-body sx-list" {...fade}>
+          <SourcesBody panel={panel} turnKey={turnKey} earlier={earlier} preview={preview} onPreview={onPreview} onOpen={onOpen} />
+        </motion.div>
+      </motion.aside>
+    </PanelGrowing>
   );
 }

@@ -4,7 +4,8 @@ import { ArabicText } from "../ArabicText.tsx";
 import { COPY } from "../chat/copy.ts";
 import { ProseView } from "../chat/ProseView.tsx";
 import type { Turn } from "../chat/store.ts";
-import { gistOf, viewOf } from "../chat/view.ts";
+import { gistOf } from "../chat/passage.ts";
+import { viewOf } from "../chat/view.ts";
 import { Badge, CitedLink } from "../ui/index.ts";
 import { CiteNumber } from "./CiteNumber.tsx";
 import { whereOf, type Annotation, type Cited, type ReaderDocument } from "./model.ts";
@@ -27,7 +28,7 @@ function snippetOf({ passage, note }: Cited): ReactNode {
 function Answer({ turn, annotations, current, onGo }: Pick<AnswerPaneProps, "turn" | "annotations" | "current" | "onGo">) {
   const view = viewOf(turn.run);
   const numberOf = (id: PassageId) => annotations.get(id)?.number ?? null;
-  const answered = view.kind === "answer" && view.card.headline !== null ? view.card : null;
+  const answered = view.kind === "answer" && view.card.lead.headline !== null ? view.card.lead : null;
   return (
     <div className="rd-answer" data-card="reader-answer">
       <div className="rd-q">{turn.question}</div>

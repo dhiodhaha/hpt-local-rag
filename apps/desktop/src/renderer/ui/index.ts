@@ -82,3 +82,7 @@ export { RevisionNotice } from "./RevisionNotice";
 export type { RevisionNoticeProps } from "./RevisionNotice";
 export { CitedLink, CITED_LINK_STATES } from "./CitedLink";
 export type { CitedLinkProps, CitedLinkState } from "./CitedLink";
+export { FadeEdge } from "./FadeEdge";
+export type { FadeEdgeProps } from "./FadeEdge";
+export { TipButton } from "./TipButton";
+export type { TipButtonProps } from "./TipButton";

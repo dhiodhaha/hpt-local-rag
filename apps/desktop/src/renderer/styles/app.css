@@ -7,6 +7,7 @@
 @import "./tokens.css";
 @import "../ui/components.css";
 @import "./screen.css";
+@import "./conversation.css";
 @import "./motion.css";
 @import "./riwayat.css";
 @import "./reader.css";

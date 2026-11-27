@@ -1,5 +1,6 @@
-import { citedOf, type Answer, type NoteId, type Passage, type PassageId } from "@hpt/server/client";
+import { type Answer, type NoteId, type Passage, type PassageId } from "@hpt/server/client";
 import { ARABIC_CHAR, arabicRuns } from "../arabic.ts";
+import { citedInReadingOrder, spansOf } from "../chat/cited.ts";
 import { COPY } from "../chat/copy.ts";
 import { SOURCE_TYPE_LABEL } from "../chat/view.ts";
 
@@ -77,9 +78,9 @@ export type Annotation = { readonly number: number; readonly excerpts: readonly 
 
 /** Every passage the answer cites. Quotes, the quote of a note and the Arabic of a dalil are spans of a passage's canonical text. */
 export function annotationsOf(answer: Answer): Map<PassageId, Annotation> {
-  const spans = [...answer.quotes, ...answer.notes.flatMap((note) => ("withheld" in note || note.quote === null ? [] : [note.quote])), ...answer.dalil.flatMap((dalil) => (dalil.arabic === null ? [] : [dalil.arabic]))];
+  const spans = spansOf(answer);
   return new Map(
-    citedOf(answer).map((id, index) => [id, { number: index + 1, excerpts: spans.filter((span) => span.passage === id).map(({ start, end }) => ({ start, end })) }]),
+    citedInReadingOrder(answer).map((id, index) => [id, { number: index + 1, excerpts: spans.filter((span) => span.passage === id).map(({ start, end }) => ({ start, end })) }]),
   );
 }
 
@@ -93,7 +94,7 @@ export const citedIn = (doc: ReaderDocument, annotations: ReadonlyMap<PassageId,
   });
 
 export type Piece = { readonly text: string; readonly quoted: boolean; readonly arabic: boolean };
-export type Block = { readonly kind: "text" | "arabic"; readonly pieces: readonly Piece[] };
+export type Span = { readonly start: number; readonly end: number };
 
 const LATIN_LETTER = /[A-Za-zÀ-ɏ]/g;
 
@@ -102,29 +103,23 @@ const ARABIC_BLOCK_SHARE = 0.6;
 
 const countOf = (text: string, pattern: RegExp): number => text.match(pattern)?.length ?? 0;
 
+export function isArabicBlock(line: string): boolean {
+  const arabic = countOf(line, ARABIC_CHAR);
+  const latin = countOf(line, LATIN_LETTER);
+  return arabic > 0 && arabic / (arabic + latin) >= ARABIC_BLOCK_SHARE;
+}
+
 /**
- * A passage's text as blocks, one per non-empty line, each cut at the edges of the excerpts that overlap it. The offsets are the
- * engine's, taken on the whole canonical string, so a line's excerpts are found by position and never by searching for the words.
+ * The text between two offsets as pieces, cut at the edges of the excerpts that overlap it. The offsets are the engine's, taken on
+ * the whole canonical string, so an excerpt is found by position and never by searching for the words.
  */
-export function blocksOf(text: string, excerpts: readonly { readonly start: number; readonly end: number }[]): Block[] {
-  const blocks: Block[] = [];
-  let lineStart = 0;
-  for (const line of text.split("\n")) {
-    const lineEnd = lineStart + line.length;
-    if (line.trim() !== "") {
-      const cuts = [...new Set([lineStart, lineEnd, ...excerpts.flatMap(({ start, end }) => [start, end]).filter((at) => at > lineStart && at < lineEnd)])].sort((a, b) => a - b);
-      const pieces = cuts.slice(0, -1).flatMap((from, index) => {
-        const to = cuts[index + 1] ?? lineEnd;
-        const quoted = excerpts.some(({ start, end }) => start <= from && to <= end);
-        return arabicRuns(text.slice(from, to)).map((part) => ({ ...part, quoted }));
-      });
-      const arabic = countOf(line, ARABIC_CHAR);
-      const latin = countOf(line, LATIN_LETTER);
-      blocks.push({ kind: arabic > 0 && arabic / (arabic + latin) >= ARABIC_BLOCK_SHARE ? "arabic" : "text", pieces });
-    }
-    lineStart = lineEnd + 1;
-  }
-  return blocks;
+export function piecesBetween(text: string, from: number, to: number, excerpts: readonly Span[]): Piece[] {
+  const cuts = [...new Set([from, to, ...excerpts.flatMap(({ start, end }) => [start, end]).filter((at) => at > from && at < to)])].sort((a, b) => a - b);
+  return cuts.slice(0, -1).flatMap((start, index) => {
+    const end = cuts[index + 1] ?? to;
+    const quoted = excerpts.some((excerpt) => excerpt.start <= start && end <= excerpt.end);
+    return arabicRuns(text.slice(start, end)).map((part) => ({ ...part, quoted }));
+  });
 }
 
 /** Index of the last entry that is at or above `y`, or -1 when `y` is above them all. `tops` is ascending. */

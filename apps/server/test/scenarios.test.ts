@@ -10,9 +10,13 @@ import { SCENARIOS, SCENARIO_NAMES, recordScenario, seedConversations, type Scen
 const EXPECTED: Record<ScenarioName, Outcome["kind"]> = {
   riwayat: "delivered",
   reader: "delivered",
+  "reader-tj": "delivered",
   "reader-revised": "delivered",
   settled: "delivered",
+  inferred: "delivered",
+  "margin-tall": "delivered",
   "follow-up": "delivered",
+  "many-dalil": "delivered",
   restart: "delivered",
   "unverified-first": "delivered",
   fallback: "delivered",

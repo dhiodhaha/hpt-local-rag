@@ -18,16 +18,6 @@
 .nw {
   white-space: nowrap;
 }
-.scard {
-  border-radius: 6px;
-  padding: 14px 18px;
-  background: var(--color-surface);
-}
-.scard .h {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 .num {
   width: 22px;
   height: 22px;
@@ -51,175 +41,16 @@
   font-size: 14.5px;
   font-weight: 600;
 }
-.scard .badges {
-  display: flex;
-  gap: 6px;
-  margin: 8px 0 0 32px;
-}
-.scard .meta {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--color-ink-muted);
-  margin: 6px 0 0 32px;
-}
-.sc-ring {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-ink-muted);
-  margin: 12px 0 4px 32px;
-}
-.sum {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  line-height: 1.5;
-  margin-left: 32px;
-}
-.grp {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.grp .row {
-  border-top: 0;
-  padding: 14px 18px;
-  background: var(--color-surface);
-  border-radius: 6px;
-}
-.grp > :first-child .row {
-  border-radius: var(--radius-md) var(--radius-md) 6px 6px;
-}
-.grp > :last-child .row {
-  border-radius: 6px 6px var(--radius-md) var(--radius-md);
-}
-.grp .count {
-  background: var(--color-ground);
-}
-/* Opened Dalil and Catatan rows, from the Doop frame "Dalil — copy". Class names are prefixed so they cannot meet a component's. */
-.it-open {
-  background: var(--color-surface);
-  border-radius: var(--radius-md);
-  padding: 0 8px 8px;
-}
-.it-open .row {
-  border-top: 0;
-  padding: 16px 8px 12px 10px;
-  background: transparent;
-}
-.it-open .count {
-  background: var(--color-ground);
-}
-.it-card {
-  background: var(--color-ground);
-  border-radius: var(--radius-sm);
-  padding: 14px 14px 12px;
-}
-.it-card + .it-card {
-  margin-top: 6px;
-}
-.it-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.it-title {
-  font-size: 14.5px;
-  font-weight: 600;
-  margin-top: 10px;
-}
-.it-body {
-  font-size: 13.5px;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--color-ink-muted);
-  margin-top: 4px;
-  text-wrap: pretty;
-}
 .ar-run {
   font-family: var(--font-arabic);
   font-size: 1.25em;
   line-height: 1;
   unicode-bidi: isolate;
 }
-.sum:has(.ar-run),
-.it-quote:has(.ar-run),
 .cl-sn:has(.ar-run) {
   line-height: 2;
   overflow-wrap: anywhere;
 }
-.it-quote {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--color-official);
-  font-family: var(--font-read);
-  font-size: 16px;
-  line-height: 1.45;
-}
-.it-cap {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-ink-muted);
-  margin-top: 14px;
-}
-.it-ar {
-  font-family: var(--font-arabic);
-  font-size: 23px;
-  line-height: 2.25;
-  padding-top: 4px;
-  text-align: right;
-  direction: rtl;
-  margin-top: 4px;
-}
-.it-tr {
-  font-family: var(--font-read);
-  font-size: 17.5px;
-  line-height: 1.45;
-  margin-top: 4px;
-  text-wrap: pretty;
-}
-.it-ex {
-  margin-top: 12px;
-  padding: 10px 12px 11px;
-  border-radius: 10px;
-  background: var(--color-surface);
-  border-left: 3px solid var(--color-rule);
-}
-.it-ex.inf {
-  border-left-color: var(--color-inferred);
-}
-.it-ex .it-h {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-}
-.it-ex p {
-  font-size: 13.5px;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--color-ink-muted);
-  margin-top: 4px;
-  text-wrap: pretty;
-}
-.it-warn {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--color-warn-soft);
-  color: var(--color-warn);
-  font-size: 13.5px;
-  font-weight: 500;
-  line-height: 1.45;
-}
-
 /* The composer's text field, in the place the Doop component draws its placeholder. */
 .cmp textarea {
   display: block;
@@ -299,20 +130,4 @@
 .act-btn[aria-pressed="true"] {
   background: var(--color-accent-soft);
   color: var(--color-accent);
-}
-.scard[role="button"] {
-  cursor: pointer;
-  outline: none;
-  transition-property: background-color;
-  transition-duration: 120ms;
-  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-}
-@media (hover: hover) and (pointer: fine) {
-  .scard[role="button"]:hover {
-    background: color-mix(in srgb, var(--color-ink) 4%, var(--color-surface));
-  }
-}
-.scard[role="button"]:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
 }
