@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { recordScenario } from "@hpt/server/testing";
 import { emptyRun, reduceRun, runOf } from "../src/renderer/chat/run.ts";
-import { gistOf, panelOf, plainTextOf, tallyOf, viewOf, whereOf } from "../src/renderer/chat/view.ts";
+import { DISCLAIMER_SHOWN, gistOf, panelOf, plainTextOf, showsDisclaimer, tallyOf, viewOf, whereOf } from "../src/renderer/chat/view.ts";
 
 const cardOf = (run: ReturnType<typeof runOf>) => {
   const view = viewOf(run);
@@ -134,5 +134,32 @@ describe("source card text", () => {
   it("joins the locator parts the passage has", () => {
     assert.equal(whereOf({ kitab: "Kitab Thaharah", bab: "Bab Wudhu", page: 4 }), "Kitab Thaharah · Bab Wudhu");
     assert.equal(whereOf({}), null);
+  });
+});
+
+describe("the disclaimer", () => {
+  const shown = async (name: Parameters<typeof recordScenario>[0], cut?: string) => showsDisclaimer(viewOf(runOf(await recordScenario(name, cut))));
+
+  it("belongs to an answer, while it streams and when it is done", async () => {
+    assert.equal(await shown("settled"), true);
+    assert.equal(await shown("settled", "verifying"), true);
+  });
+
+  it("is never under a reply that is not an answer: out of scope, declined, clarify, insufficient", async () => {
+    for (const name of ["out-of-scope", "declined", "clarify", "insufficient"] as const) assert.equal(await shown(name), false, name);
+  });
+
+  it("is never under a failure or a withheld answer", async () => {
+    for (const name of ["not-signed-in", "blocked", "limit-no-fallback", "withheld"] as const) assert.equal(await shown(name), false, name);
+  });
+
+  it("is never there while the type is still unknown: working, or rechecking after a restart", async () => {
+    assert.equal(await shown("settled", "thinking"), false);
+    assert.equal(showsDisclaimer(viewOf(emptyRun())), false);
+    assert.equal(await shown("restart", "rechecking"), false);
+  });
+
+  it("has one decision per answer type", () => {
+    assert.deepEqual(DISCLAIMER_SHOWN, { answer: true, insufficient: false, clarify: false, out_of_scope: false, declined: false });
   });
 });

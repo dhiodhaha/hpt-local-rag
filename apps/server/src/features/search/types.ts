@@ -127,6 +127,8 @@ export type HptIndex = {
   search(question: string, options?: SearchOptions): Promise<SearchResult>;
   getPassages(ids: readonly string[]): Map<PassageId, Passage>;
   hasPutusan(noteId: NoteId): boolean;
+  /** Every citable passage of one note in reading order. Empty for a note that is not in the index or has no citable text. */
+  passagesOfNote(noteId: NoteId): Passage[];
   close(): void;
 };
 

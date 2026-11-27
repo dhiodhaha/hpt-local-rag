@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import { Button, StateNotice } from "../ui/index.ts";
 import { COPY } from "./copy.ts";
 import type { RunView } from "./view.ts";
@@ -13,7 +14,7 @@ function textOf(outcome: Notice["outcome"]): { kind: "koneksi" | "batas"; title:
 }
 
 /** Withheld, failed and cancelled asks. Whatever streamed before is not shown: the question stays and this takes the card's place. */
-export function NoticeView({ notice, onRetry }: { notice: Notice; onRetry: () => void }) {
+export function NoticeView({ notice, onRetry }: { notice: Notice; onRetry: (event: MouseEvent<HTMLButtonElement>) => void }) {
   const { kind, title, body } = textOf(notice.outcome);
   return (
     <div data-card="notice" data-code={notice.outcome.kind === "failed" ? notice.outcome.code : notice.outcome.kind}>

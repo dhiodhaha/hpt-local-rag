@@ -16,13 +16,14 @@ import { ToHostSchema } from "./schema.ts";
  *   cancel       one AbortController per call, aborted by `cancel`, by `close`, or by the parent going away
  *   guarantee    per call id: events, then exactly one result or error. A call id is never reused
  *
- * Riwayat (list, open, search, rename, remove) is answered from the conversation files, one request and one result. `remove`
+ * Riwayat (list, open, search, rename, remove) is answered from the conversation files, one request and one result. `passages` is the
+ * reader's: one note's citable passages in reading order, from the index. `remove`
  * refuses a conversation that is answering a question, because its turn would be written back after the delete.
  */
 export type Backend = {
   readonly engine: AnswerEngine;
   readonly conversations: Conversations;
-  readonly index: Pick<HptIndex, "hasPutusan" | "getPassages" | "info">;
+  readonly index: Pick<HptIndex, "hasPutusan" | "getPassages" | "passagesOfNote" | "info">;
 };
 
 export type HostDeps = {
@@ -117,6 +118,10 @@ export function createHost(deps: HostDeps): Host {
       return openedOf(summary, conversation.turns, ready.index.getPassages(ids));
     },
     search: (params, ready) => ready.conversations.search(params.query),
+    passages(params, ready) {
+      const passages = ready.index.passagesOfNote(params.noteId);
+      return passages.length === 0 ? { code: "not_found", message: "the note has no passages in the index" } : { passages };
+    },
     rename(params, ready) {
       const summary = ready.conversations.rename(params.conversation, params.title);
       return summary === null ? { code: "not_found", message: "the conversation does not exist" } : { conversation: summary };

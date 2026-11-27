@@ -6,5 +6,6 @@
  */
 export * from "./features/answer/client.ts";
 export * from "./features/host/client.ts";
-export type { Evidence, EvidenceLevel, Locator, Passage, PassageId, SourceType } from "./features/search/index.ts";
+export type { NoteId } from "./features/corpus/index.ts";
+export * from "./features/search/client.ts";
 export type { Connection, Effort, FailureCode } from "./features/providers/index.ts";

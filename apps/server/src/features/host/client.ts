@@ -1,5 +1,7 @@
 import { FAILURE_COPY, type AnswerEvent, type ConversationId, type ConversationSummary, type OpenedConversation, type Outcome, type Scope, type SearchResult } from "../answer/client.ts";
+import type { NoteId } from "../corpus/index.ts";
 import type { Connection, Effort, FailureCode } from "../providers/index.ts";
+import type { Passage } from "../search/index.ts";
 
 /**
  * The engine as a service for one UI process. This file is the browser-safe half: the wire types, the Pipe a transport
@@ -26,6 +28,22 @@ export type ModelOption = {
   readonly isDefault: boolean;
 };
 
+/** The path a question took from the person to the composer's caller. Every ask names one, so a log line can say how it was made. */
+export const ASK_VIA = ["enter", "button", "suggestion", "clarify", "retry"] as const;
+export type AskVia = (typeof ASK_VIA)[number];
+
+/**
+ * Where an ask came from, written by the renderer and logged by the app's main process (never the question text). `trusted` is
+ * the triggering DOM event's isTrusted, so a script that clicks a button is told apart from a person. `focused` is
+ * document.hasFocus() at that moment. `turn` is the number the question has in the conversation as the window shows it.
+ */
+export type AskOrigin = {
+  readonly via: AskVia;
+  readonly trusted: boolean;
+  readonly focused: boolean;
+  readonly turn: number;
+};
+
 export type AskParams = {
   /** null starts a new conversation. Otherwise an id the host handed out before. */
   readonly conversation: ConversationId | null;
@@ -34,6 +52,7 @@ export type AskParams = {
   readonly scope: Scope | null;
   /** null is the host's default route (Opus 5.5 low, with the D20 fallback). A manual pick of another model has no fallback. */
   readonly choice: { readonly provider: ProviderId; readonly model: string } | null;
+  readonly origin: AskOrigin;
 };
 
 export type AskResult = {
@@ -56,14 +75,16 @@ export type HostErrorCode = "bad_request" | "not_found" | "index_unavailable" | 
 export type HostError = { readonly code: HostErrorCode; readonly message: string };
 
 /**
- * One entry per method: its params, what streams before the result, and the result. `ask` streams. The Riwayat methods answer
- * once, so their `event` is `never`. Reserved for the reader: `passages`.
+ * One entry per method: its params, what streams before the result, and the result. `ask` streams. The Riwayat methods and `passages`
+ * (the reader's) answer once, so their `event` is `never`.
  */
 export type Methods = {
   ask: { params: AskParams; event: AnswerEvent; result: AskResult };
   list: { params: null; event: never; result: { readonly conversations: readonly ConversationSummary[] } };
   open: { params: { readonly conversation: ConversationId }; event: never; result: OpenedConversation };
   search: { params: { readonly query: string }; event: never; result: SearchResult };
+  /** The whole note, in reading order. `not_found` when the index has no citable text under that id. */
+  passages: { params: { readonly noteId: NoteId }; event: never; result: { readonly passages: readonly Passage[] } };
   rename: { params: { readonly conversation: ConversationId; readonly title: string }; event: never; result: { readonly conversation: ConversationSummary } };
   remove: { params: { readonly conversation: ConversationId }; event: never; result: { readonly conversation: ConversationId } };
 };

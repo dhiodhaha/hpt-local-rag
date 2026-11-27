@@ -4,10 +4,11 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createEngine, loadPromptTemplate, memoryTraceSink, openConversations, type AnswerEvent } from "../src/features/answer/index.ts";
+import type { PassageId } from "../src/features/search/index.ts";
 import { claudeModelOptions, createClient, createHost, type AskParams, type FromHost, type HostDeps, type HostError, type Pipe } from "../src/features/host/index.ts";
 import { chunked, scriptedProvider, type Connection, type ScriptedAttempt } from "../src/features/providers/index.ts";
 import { answerConfig } from "../src/shared/config.ts";
-import { ONE, TWO, answerJson } from "../src/testing/answer-fixtures.ts";
+import { ONE, TWO, answerJson, makePassage } from "../src/testing/answer-fixtures.ts";
 import { fakeIndex } from "../src/testing/fake-index.ts";
 import { memoryPipe } from "../src/testing/memory-pipe.ts";
 import { tempDir } from "./helpers.ts";
@@ -40,7 +41,7 @@ function rig(script: ScriptedAttempt[], options: { hasPutusan?: boolean; connect
   return { provider, conversations, host, client, closed };
 }
 
-const ask = (overrides: Partial<AskParams> = {}): AskParams => ({ conversation: null, question: "Apakah kompos boleh?", scope: null, choice: null, ...overrides });
+const ask = (overrides: Partial<AskParams> = {}): AskParams => ({ conversation: null, question: "Apakah kompos boleh?", scope: null, choice: null, origin: { via: "enter", trusted: true, focused: true, turn: 1 }, ...overrides });
 
 function collect(client: ReturnType<typeof createClient>, params: AskParams) {
   const events: AnswerEvent[] = [];
@@ -117,6 +118,8 @@ describe("the host over an in-memory pipe", () => {
       ["an empty question", { question: "   " }],
       ["a model that is not in the list", { choice: { provider: "claude", model: "claude-not-real" } }],
       ["a note that is not a putusan", { scope: { kind: "document", noteId: "hpt/bukan-putusan" } }],
+      ["an ask that does not say where it came from", { origin: undefined as never }],
+      ["an origin with a path that is not one of ours", { origin: { via: "script" as never, trusted: true, focused: true, turn: 1 } }],
     ];
     for (const [label, overrides] of refusals) {
       const { call, events } = collect(client, ask(overrides));
@@ -358,5 +361,49 @@ describe("Riwayat over the host", () => {
     await assert.rejects(client.request("list", null), { code: "index_unavailable" });
     const down = createClient({ send: () => {}, subscribe: (listener) => (listener({ kind: "down", reason: "exited" }), () => {}) });
     await assert.rejects(down.request("list", null), { code: "host_down" });
+  });
+});
+
+describe("the reader over the host", () => {
+  const noteIn = (ordinal: number, text: string) => makePassage(ordinal, text, { id: `putusan/uji-baca#${ordinal}` as PassageId, noteId: "putusan/uji-baca" });
+  const NOTE = [noteIn(3, "Bagian ketiga."), noteIn(1, "Bagian pertama."), noteIn(2, "Bagian kedua.")];
+
+  function readerRig() {
+    const index = fakeIndex([ONE, ...NOTE]);
+    const engine = createEngine({ index, provider: scriptedProvider([]), prompt: PROMPT, canary: "CANARY-test", traces: memoryTraceSink(), settings: answerConfig.answer });
+    const host = createHost({
+      backend: { engine, conversations: openConversations(path.join(tempDir(), "conversations")), index },
+      models: claudeModelOptions(),
+      probe: () => Promise.resolve(CONNECTED),
+      close: () => engine.close(),
+      log: () => {},
+    });
+    return createClient(memoryPipe(host));
+  }
+
+  it("returns one note's passages in reading order and none of another note's", async () => {
+    const client = readerRig();
+    const { passages } = await client.request("passages", { noteId: "putusan/uji-baca" });
+    assert.deepEqual(passages.map((passage) => passage.ordinal), [1, 2, 3]);
+    assert.ok(passages.every((passage) => passage.noteId === "putusan/uji-baca"));
+    assert.deepEqual((await client.request("passages", { noteId: ONE.noteId })).passages.map((passage) => passage.id), [ONE.id]);
+  });
+
+  it("says not_found for a well-formed id the index does not hold", async () => {
+    const client = readerRig();
+    await assert.rejects(client.request("passages", { noteId: "putusan/tidak-ada" }), { code: "not_found" });
+  });
+
+  it("refuses an id that is not a putusan slug before it reaches the index", async () => {
+    const client = readerRig();
+    for (const noteId of ["../../etc/passwd", "putusan/../x", "putusan/a/b", "putusan/Huruf-Besar", "putusan/", "hpt/uji-baca", `putusan/${"a".repeat(200)}`, "putusan/uji baca", ""]) {
+      await assert.rejects(client.request("passages", { noteId }), { code: "bad_request" }, noteId);
+    }
+    await assert.rejects(client.request("passages", { noteId: 7 as unknown as string }), { code: "bad_request" });
+  });
+
+  it("says why when the index is missing", async () => {
+    const host = createHost({ backend: { unavailable: "no index" }, models: claudeModelOptions(), probe: () => Promise.resolve(CONNECTED), close: async () => {}, log: () => {} });
+    await assert.rejects(createClient(memoryPipe(host)).request("passages", { noteId: "putusan/uji-baca" }), { code: "index_unavailable" });
   });
 });

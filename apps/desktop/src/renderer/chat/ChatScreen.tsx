@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { PassageId } from "@hpt/server/client";
 import { Aura, StateNotice, SuggestionChip } from "../ui/index.ts";
 import { AllConversations } from "./AllConversations.tsx";
 import { ComposerBar } from "./ComposerBar.tsx";
 import { connectionOf } from "./connection.ts";
 import { useChat, useHost } from "./context.tsx";
 import { COPY } from "./copy.ts";
+import { provenanceOf, type Provenance } from "./provenance.ts";
 import { RiwayatLayer } from "./RiwayatLayer.tsx";
 import { stampOf } from "./riwayat.ts";
+import { ReaderLayer } from "../reader/index.ts";
 import { Sidebar } from "./Sidebar.tsx";
 import { SourcesPanel, type EarlierPanel } from "./SourcesPanel.tsx";
 import { isBusy } from "./store.ts";
@@ -67,12 +68,12 @@ export function ChatScreen() {
   const turns = useChat((state) => state.turns);
   const draft = useChat((state) => state.draft);
   const choice = useChat((state) => state.choice);
-  const active = useChat((state) => state.openSource);
+  const reader = useChat((state) => state.reader);
   const screen = useChat((state) => state.screen);
   const conversation = useChat((state) => state.conversation);
   const history = useChat((state) => state.history);
   const busy = useChat(isBusy);
-  const { setDraft, chooseModel, selectSource, send, cancel, retry, newConversation, refreshHistory } = useChat((state) => state);
+  const { setDraft, chooseModel, openReader, send, cancel, retry, newConversation, refreshHistory } = useChat((state) => state);
   const [closed, setClosed] = useState(false);
   const { scroller, column } = useFollow(turns.length, conversation);
 
@@ -80,7 +81,7 @@ export function ChatScreen() {
   const panel = latest === undefined || screen === "all" ? null : panelOf(latest.run);
   const earlier: EarlierPanel[] = turns.slice(0, -1).flatMap((turn, index) => {
     const found = panelOf(turn.run);
-    return found === null ? [] : [{ turn: index + 1, question: turn.question, panel: found }];
+    return found === null ? [] : [{ turn: index + 1, turnKey: turn.key, question: turn.question, panel: found }];
   });
   const models = host.kind === "ready" ? host.status.models : [];
   const connection = connectionOf(host, turns);
@@ -113,15 +114,12 @@ export function ChatScreen() {
     return () => window.removeEventListener("keydown", onKey);
   }, [canStartNew, newConversation]);
 
-  const cite = (id: PassageId) => {
+  const ask = (text: string, provenance: Provenance) => {
     setClosed(false);
-    selectSource(id);
-  };
-  const ask = (text: string) => {
-    setClosed(false);
-    send(text);
+    send(text, provenance);
   };
   const showPanel = panel !== null && !closed;
+  const active = reader?.passage ?? null;
   const bar = (
     <ComposerBar
       draft={draft}
@@ -133,7 +131,7 @@ export function ChatScreen() {
       connected={connection.state === "connected"}
       onDraft={setDraft}
       onChoose={chooseModel}
-      onSend={() => ask(draft)}
+      onSend={(provenance) => ask(draft, provenance)}
     />
   );
 
@@ -155,7 +153,7 @@ export function ChatScreen() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {COPY.riwayat.suggestions.map((text) => (
-                  <SuggestionChip key={text} label={text} disabled={unusable} onClick={() => ask(text)} />
+                  <SuggestionChip key={text} label={text} disabled={unusable} onClick={(event) => ask(text, provenanceOf("suggestion", event))} />
                 ))}
               </div>
             </div>
@@ -178,7 +176,7 @@ export function ChatScreen() {
       <div ref={scroller} className="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "24px 0 28px" }}>
         <div ref={column} style={{ width: COLUMN, margin: "0 auto" }}>
           {turns.map((turn, index) => (
-            <TurnView key={turn.key} turn={turn} latest={index === turns.length - 1} active={active} onCite={cite} onPick={ask} onRetry={retry} onCancel={cancel} />
+            <TurnView key={turn.key} turn={turn} latest={index === turns.length - 1} active={active} onCite={(id) => openReader(turn.key, id)} onPick={(option, event) => ask(option, provenanceOf("clarify", event))} onRetry={(event) => retry(provenanceOf("retry", event))} onCancel={cancel} />
           ))}
           <div style={{ marginTop: 16 }}>
             <HostNotice />
@@ -192,12 +190,15 @@ export function ChatScreen() {
   const screens = { all: <AllConversations />, home, chat } as const;
 
   return (
-    <div style={{ display: "flex", width: "100%", height: "100%", background: "var(--color-surface)" }} data-host={host.kind} data-screen={screenName}>
-      <Sidebar connection={connection} canStartNew={canStartNew} onNew={newConversation} />
-      <main style={{ position: "relative", flex: 1, minWidth: 0, margin: showPanel ? "8px 0" : "8px 8px 8px 0", background: "var(--color-ground)", borderRadius: showPanel ? "var(--radius-lg) 0 0 var(--radius-lg)" : "var(--radius-lg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        {screens[screenName]}
-      </main>
-      {panel === null || !showPanel ? null : <SourcesPanel panel={panel} earlier={earlier} active={active} onClose={() => setClosed(true)} />}
+    <div style={{ position: "relative", display: "flex", width: "100%", height: "100%", background: "var(--color-surface)" }} data-host={host.kind} data-screen={screenName}>
+      <div style={{ display: "contents" }} inert={reader !== null}>
+        <Sidebar connection={connection} canStartNew={canStartNew} onNew={newConversation} />
+        <main style={{ position: "relative", flex: 1, minWidth: 0, margin: showPanel ? "8px 0" : "8px 8px 8px 0", background: "var(--color-ground)", borderRadius: showPanel ? "var(--radius-lg) 0 0 var(--radius-lg)" : "var(--radius-lg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {screens[screenName]}
+        </main>
+        {panel === null || !showPanel || latest === undefined ? null : <SourcesPanel panel={panel} turnKey={latest.key} earlier={earlier} active={active} onOpen={openReader} onClose={() => setClosed(true)} />}
+      </div>
+      <ReaderLayer />
       <RiwayatLayer />
     </div>
   );

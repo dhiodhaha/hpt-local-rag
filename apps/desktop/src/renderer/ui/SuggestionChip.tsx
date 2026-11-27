@@ -1,6 +1,8 @@
+import type { MouseEvent } from "react";
+
 export type SuggestionChipProps = {
   label: string;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
 };
 

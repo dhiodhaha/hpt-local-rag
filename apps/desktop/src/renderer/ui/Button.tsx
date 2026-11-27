@@ -3,11 +3,13 @@ export const BUTTON_SIZES = ["md", "lg"] as const;
 export type ButtonTone = (typeof BUTTON_TONES)[number];
 export type ButtonSize = (typeof BUTTON_SIZES)[number];
 
+import type { MouseEvent } from "react";
+
 export type ButtonProps = {
   tone?: ButtonTone;
   size?: ButtonSize;
   label: string;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
 };
 

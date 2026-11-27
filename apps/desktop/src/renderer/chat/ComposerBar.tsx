@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { ModelOption as Option } from "@hpt/server/client";
 import { Composer, ModelChip, ModelGroupHead, ModelMenu, ModelOption } from "../ui/index.ts";
 import { COPY } from "./copy.ts";
+import { provenanceOf, type Provenance } from "./provenance.ts";
 
 type PickerProps = {
   models: readonly Option[];
@@ -74,7 +75,7 @@ export type ComposerBarProps = {
   connected: boolean;
   onDraft: (text: string) => void;
   onChoose: (model: string | null) => void;
-  onSend: () => void;
+  onSend: (provenance: Provenance) => void;
 };
 
 export function ComposerBar({ draft, busy, followUp, disabled, models, choice, connected, onDraft, onChoose, onSend }: ComposerBarProps) {
@@ -89,13 +90,14 @@ export function ComposerBar({ draft, busy, followUp, disabled, models, choice, c
     if (!busy) field.current?.focus();
   }, [busy]);
 
-  const submit = () => {
-    if (!busy && !disabled && draft.trim() !== "") onSend();
+  /** Only a trusted event sends. An untrusted one (a script's) is ignored here, and again by the store and by the main process. */
+  const submit = (provenance: Provenance) => {
+    if (provenance.trusted && !busy && !disabled && draft.trim() !== "") onSend(provenance);
   };
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
-    submit();
+    submit(provenanceOf("enter", event));
   };
   return (
     <div data-busy={busy || disabled ? "true" : "false"}>
@@ -103,7 +105,7 @@ export function ComposerBar({ draft, busy, followUp, disabled, models, choice, c
         placeholder={followUp ? COPY.placeholderFollowUp : COPY.placeholder}
         field={<textarea ref={field} rows={1} value={draft} placeholder={followUp ? COPY.placeholderFollowUp : COPY.placeholder} aria-label={COPY.placeholder} onChange={(event) => onDraft(event.target.value)} onKeyDown={onKey} autoFocus />}
         chip={<ModelPicker models={models} choice={choice} connected={connected} onChoose={onChoose} />}
-        onSend={submit}
+        onSend={(event) => submit(provenanceOf("button", event))}
       />
     </div>
   );

@@ -1,22 +1,10 @@
-import { useEffect, useRef } from "react";
 import type { ConversationSummary } from "@hpt/server/client";
-import { ConfirmDialog, Presence, RowMenu } from "../ui/index.ts";
+import { ConfirmDialog, EXIT_MS, Presence, RowMenu, useLast } from "../ui/index.ts";
 import { useChat } from "./context.tsx";
 import { COPY } from "./copy.ts";
 
-/** Shorter than the arrival: the person has already decided. */
-const EXIT_MS = 110;
 const MENU_WIDTH = 196;
 const MENU_HEIGHT = 104;
-
-/** Keeps the last value while `value` is null, so a closing popup still has its content to show while it fades out. */
-function useLast<T>(value: T | null): T | null {
-  const last = useRef<T | null>(value);
-  useEffect(() => {
-    if (value !== null) last.current = value;
-  });
-  return value ?? last.current;
-}
 
 function Menu() {
   const menu = useChat((state) => state.menu);

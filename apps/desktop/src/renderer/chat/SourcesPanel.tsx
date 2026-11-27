@@ -4,12 +4,18 @@ import { Badge, SourceTurnGroup } from "../ui/index.ts";
 import { COPY } from "./copy.ts";
 import type { PanelCard, SourcesPanel as Panel } from "./view.ts";
 
-export type EarlierPanel = { readonly turn: number; readonly question: string; readonly panel: Panel };
+export type EarlierPanel = { readonly turn: number; readonly turnKey: string; readonly question: string; readonly panel: Panel };
+
+/** A card opens the reader at its passage. `turnKey` names the turn whose answer the card belongs to. */
+export type OpenSource = (turnKey: string, id: PassageId) => void;
 
 export type SourcesPanelProps = {
   panel: Panel;
+  /** The turn the current panel belongs to. */
+  turnKey: string;
   earlier: readonly EarlierPanel[];
   active: PassageId | null;
+  onOpen: OpenSource;
   onClose: () => void;
 };
 
@@ -22,7 +28,7 @@ function cornersOf(index: number, total: number): CSSProperties {
 }
 
 /** The entrance class is dropped when it ends, so React moving the card to a new place never replays it. */
-function Card({ card, style, active, index }: { card: PanelCard; style: CSSProperties; active: boolean; index: number }) {
+function Card({ card, style, active, index, onOpen }: { card: PanelCard; style: CSSProperties; active: boolean; index: number; onOpen: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [entering, setEntering] = useState(true);
   useEffect(() => {
@@ -34,6 +40,15 @@ function Card({ card, style, active, index }: { card: PanelCard; style: CSSPrope
       className={entering ? "scard m-source" : "scard"}
       style={{ ...style, "--i": index, ...(active ? { boxShadow: "inset 0 0 0 1.5px var(--color-accent)" } : {}) } as CSSProperties}
       data-source={card.id}
+      role="button"
+      tabIndex={0}
+      aria-label={COPY.reader.openSource(card.title)}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        onOpen();
+      }}
       onAnimationEnd={(event) => {
         if (event.target === event.currentTarget) setEntering(false);
       }}
@@ -60,11 +75,13 @@ const CHEVRON = (
   </svg>
 );
 
-function Cards({ cards, active }: { cards: readonly PanelCard[]; active: PassageId | null }) {
-  return cards.map((card, index) => <Card key={card.id} card={card} style={cornersOf(index, cards.length)} active={active === card.id} index={index} />);
+type Opening = { active: PassageId | null; open: (id: PassageId) => void };
+
+function Cards({ cards, active, open }: { cards: readonly PanelCard[] } & Opening) {
+  return cards.map((card, index) => <Card key={card.id} card={card} style={cornersOf(index, cards.length)} active={active === card.id} index={index} onOpen={() => open(card.id)} />);
 }
 
-function Current({ panel, active }: { panel: Panel; active: PassageId | null }) {
+function Current({ panel, active, open }: { panel: Panel } & Opening) {
   const [unfolded, setUnfolded] = useState(false);
   const { folded } = panel;
   return (
@@ -72,7 +89,7 @@ function Current({ panel, active }: { panel: Panel; active: PassageId | null }) 
       {panel.hint === null ? null : (
         <p style={{ padding: "0 6px 10px", fontSize: 12.5, fontWeight: 500, lineHeight: 1.45, color: "var(--color-ink-muted)" }}>{panel.hint === "numbers-follow" ? COPY.numbersFollow : COPY.numbersReturn}</p>
       )}
-      <Cards cards={panel.shown} active={active} />
+      <Cards cards={panel.shown} active={active} open={open} />
       {panel.unverified.map((reference) => (
         <div
           key={reference.asStated}
@@ -101,7 +118,7 @@ function Current({ panel, active }: { panel: Panel; active: PassageId | null }) 
           </button>
           {unfolded ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 8 }}>
-              <Cards cards={folded.cards} active={active} />
+              <Cards cards={folded.cards} active={active} open={open} />
             </div>
           ) : null}
         </>
@@ -110,7 +127,7 @@ function Current({ panel, active }: { panel: Panel; active: PassageId | null }) 
   );
 }
 
-function Earlier({ group, active }: { group: EarlierPanel; active: PassageId | null }) {
+function Earlier({ group, active, onOpen }: { group: EarlierPanel; active: PassageId | null; onOpen: OpenSource }) {
   const [open, setOpen] = useState(false);
   const shown = group.panel.shown;
   return (
@@ -118,7 +135,7 @@ function Earlier({ group, active }: { group: EarlierPanel; active: PassageId | n
       <SourceTurnGroup state="earlier" turn={`Pertanyaan ${group.turn}`} count={COPY.panelBadge(shown.length, "dikutip")} question={group.question} onClick={() => setOpen(!open)} />
       {open ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <Cards cards={shown} active={active} />
+          <Cards cards={shown} active={active} open={(id) => onOpen(group.turnKey, id)} />
         </div>
       ) : null}
     </>
@@ -131,7 +148,23 @@ const CLOSE = (
   </svg>
 );
 
-export function SourcesPanel({ panel, earlier, active, onClose }: SourcesPanelProps) {
+/** The cards of a panel and of the earlier questions, the part the reader's Sumber tab shows too. */
+export function SourcesBody({ panel, turnKey, earlier, active, onOpen }: Omit<SourcesPanelProps, "onClose">) {
+  return (
+    <>
+      <Current panel={panel} active={active} open={(id) => onOpen(turnKey, id)} />
+      {earlier.length === 0 ? null : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 14 }}>
+          {earlier.map((group) => (
+            <Earlier key={group.turn} group={group} active={active} onOpen={onOpen} />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function SourcesPanel({ panel, turnKey, earlier, active, onOpen, onClose }: SourcesPanelProps) {
   return (
     <aside
       aria-label={COPY.sources}
@@ -148,14 +181,7 @@ export function SourcesPanel({ panel, earlier, active, onClose }: SourcesPanelPr
         </button>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 3 }}>
-        <Current panel={panel} active={active} />
-        {earlier.length === 0 ? null : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 14 }}>
-            {earlier.map((group) => (
-              <Earlier key={group.turn} group={group} active={active} />
-            ))}
-          </div>
-        )}
+        <SourcesBody panel={panel} turnKey={turnKey} earlier={earlier} active={active} onOpen={onOpen} />
       </div>
     </aside>
   );

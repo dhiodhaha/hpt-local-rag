@@ -183,9 +183,11 @@ export type AnswerCardViewProps = {
   revealOnArrival?: boolean;
   /** The summary has fully arrived and passed its checks: the rest of it catches up. */
   settled?: boolean;
+  /** From `showsDisclaimer(view)`: the card does not decide it. */
+  disclaimer: boolean;
 };
 
-export function AnswerCardView({ card, context, revealOnArrival = false, settled = true }: AnswerCardViewProps) {
+export function AnswerCardView({ card, context, revealOnArrival = false, settled = true, disclaimer }: AnswerCardViewProps) {
   const hasReference = card.unverified.length > 0;
   const { prose, complete, animated } = useReveal(card.summary, revealOnArrival, settled);
   const showSkeleton = card.headline === null && !hasReference;
@@ -242,13 +244,12 @@ export function AnswerCardView({ card, context, revealOnArrival = false, settled
         )}
       </section>
       <Rows rows={card.rows} card={card} context={context} />
-      {card.finished && complete ? (
-        <AnswerActions text={plainTextOf(card)} index={ROWS_FROM + card.rows.length} />
-      ) : (
+      {card.finished && complete ? <AnswerActions text={plainTextOf(card)} index={ROWS_FROM + card.rows.length} disclaimer={disclaimer} /> : null}
+      {!(card.finished && complete) && disclaimer ? (
         <div style={{ margin: "16px 4px 0" }}>
           <Disclaimer t={COPY.disclaimer} />
         </div>
-      )}
+      ) : null}
     </>
   );
 }

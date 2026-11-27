@@ -20,7 +20,7 @@ const COPY_ICON = icon(
   </>,
 );
 
-export function AnswerActions({ text, index }: { text: string; index: number }) {
+export function AnswerActions({ text, index, disclaimer }: { text: string; index: number; disclaimer: boolean }) {
   const [rating, setRating] = useState<Rating>(null);
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -36,10 +36,14 @@ export function AnswerActions({ text, index }: { text: string; index: number }) 
         <span className="closing-sign">
           {COPY.actions.sign}
         </span>
-        <span className="closing-sep" aria-hidden="true" />
-        <div className="closing-note">
-          <Disclaimer t={COPY.disclaimer} />
-        </div>
+        {disclaimer ? (
+          <>
+            <span className="closing-sep" aria-hidden="true" />
+            <div className="closing-note">
+              <Disclaimer t={COPY.disclaimer} />
+            </div>
+          </>
+        ) : null}
         <div className="closing-acts">
           <button type="button" className="act-btn" aria-label={COPY.actions.good} aria-pressed={rating === "good"} onClick={() => setRating(rating === "good" ? null : "good")}>
             {THUMB_UP}

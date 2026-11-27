@@ -5,6 +5,7 @@ import type { EvidenceLevel, Passage } from "../features/search/index.ts";
 import { answerConfig } from "../shared/config.ts";
 import { GOOD_ANSWER, TEXT_ONE, TEXT_TWO, answerJson, makePassage } from "./answer-fixtures.ts";
 import { fakeIndex, type FakeIndex } from "./fake-index.ts";
+import { READER_ORDER, REVISED_ORDER } from "./reader-fixtures.ts";
 
 /**
  * Named, repeatable runs of the real engine (real pipeline, real checks, real fold) with a scripted provider and a fake index
@@ -41,6 +42,8 @@ type Scenario = {
   readonly cuts?: Readonly<Record<string, Cut>>;
   /** `hpt host --scenario` fills the conversations folder with a fictional history first (riwayat-seed.ts). */
   readonly seed?: boolean;
+  /** What the fake index holds, in retrieval order. Default: SCENARIO_PASSAGES. */
+  readonly passages?: readonly Passage[];
 };
 
 const stream = (text: string, size: number, delayMs: number): ScriptedAttempt => ({ chunks: chunked(text, size), delayMs });
@@ -57,6 +60,10 @@ export const SCENARIOS = {
     script: (size) => [stream(answerJson(THREE_CITED), size, 0), stream(answerJson(THREE_CITED), size, 0)],
     seed: true,
   },
+  /** Baca putusan: the answer cites three passages deep inside one long fictional note, so a citation opens the reader far from the top. */
+  reader: { question: QUESTION, script: (size) => [stream(answerJson(THREE_CITED), size, 0)], passages: READER_ORDER },
+  /** Baca putusan on a note a later one replaced in part: the notice, the dashed passages and the way to the newer ruling. */
+  "reader-revised": { question: QUESTION, script: (size) => [stream(answerJson(THREE_CITED), size, 0)], passages: REVISED_ORDER },
   /** D7.1 then D7.2: the headline is marked verifying until the summary passes its checks. */
   settled: {
     question: QUESTION,
@@ -165,7 +172,7 @@ export type ScenarioRig = {
 
 export function scenarioRig(name: ScenarioName, options: ScenarioOptions = {}): ScenarioRig {
   const scenario: Scenario = SCENARIOS[name];
-  const index = fakeIndex(SCENARIO_PASSAGES);
+  const index = fakeIndex(scenario.passages ?? SCENARIO_PASSAGES);
   index.evidence = () => scenario.evidence ?? "strong";
   const script = scenario.script(CHUNK_CHARS).map((attempt) => ({ ...attempt, delayMs: options.delayMs ?? 0 }));
   const engine = createEngine({

@@ -7,6 +7,7 @@ import { createClient } from "@hpt/server/client";
 import { memoryPipe, scenarioHost, seedConversations, type ScenarioName } from "@hpt/server/testing";
 import { createChatStore, eventBuffer, isBusy } from "../src/renderer/chat/store.ts";
 
+const PERSON = { via: "enter", trusted: true, focused: true } as const;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function until(check: () => boolean, label: string): Promise<void> {
@@ -29,7 +30,7 @@ async function rig(name: ScenarioName, delayMs = 0) {
 describe("the chat store", () => {
   it("folds a streamed answer into the turn and holds the host's conversation id", async () => {
     const { store, host } = await rig("settled");
-    store.getState().send("  Apakah kompos boleh dibuat dari sisa daun?  ");
+    store.getState().send("  Apakah kompos boleh dibuat dari sisa daun?  ", PERSON);
     assert.equal(isBusy(store.getState()), true);
     await until(() => !isBusy(store.getState()), "the answer");
     const state = store.getState();
@@ -42,12 +43,12 @@ describe("the chat store", () => {
 
   it("ignores a second question while one is running, and sends a follow-up in the same conversation", async () => {
     const { store, host } = await rig("settled", 5);
-    store.getState().send("pertama");
-    store.getState().send("kedua");
+    store.getState().send("pertama", PERSON);
+    store.getState().send("kedua", PERSON);
     assert.equal(store.getState().turns.length, 1);
     await until(() => !isBusy(store.getState()) && store.getState().conversation !== null, "the first answer");
     const conversation = store.getState().conversation;
-    store.getState().send("lanjut?");
+    store.getState().send("lanjut?", PERSON);
     await until(() => store.getState().turns.length === 2, "the follow-up turn");
     assert.equal(store.getState().conversation, conversation);
     await host.close();
@@ -55,7 +56,7 @@ describe("the chat store", () => {
 
   it("drops a cancelled turn and puts its question back in the composer", async () => {
     const { store, host } = await rig("settled", 30);
-    store.getState().send("batalkan ini");
+    store.getState().send("batalkan ini", PERSON);
     await wait(120);
     store.getState().cancel();
     await until(() => store.getState().turns.length === 0, "the turn to be dropped");
@@ -65,10 +66,10 @@ describe("the chat store", () => {
 
   it("keeps a failed turn with its notice, and asks the same question again on retry", async () => {
     const { store, host } = await rig("not-signed-in");
-    store.getState().send("coba");
+    store.getState().send("coba", PERSON);
     await until(() => !isBusy(store.getState()), "the failure");
     assert.equal(store.getState().turns[0]?.run.outcome?.kind, "failed");
-    store.getState().retry();
+    store.getState().retry(PERSON);
     assert.equal(store.getState().turns.length, 1);
     assert.equal(store.getState().turns[0]?.question, "coba");
     await until(() => !isBusy(store.getState()), "the second failure");
@@ -77,7 +78,7 @@ describe("the chat store", () => {
 
   it("starts over only when nothing is running", async () => {
     const { store, host } = await rig("settled");
-    store.getState().send("x");
+    store.getState().send("x", PERSON);
     store.getState().newConversation();
     assert.equal(store.getState().turns.length, 1);
     await until(() => !isBusy(store.getState()), "the answer");
@@ -142,7 +143,7 @@ describe("Riwayat in the store", () => {
     assert.equal(opened.turns[0]?.run.answer.headline, "Menurut HPT, kompos boleh dibuat dari sisa daun.");
     assert.equal(opened.turns[0]?.run.answer.headlineState, "settled");
     assert.ok((opened.turns[0]?.run.sources.length ?? 0) > 0);
-    opened.send("Lanjut?");
+    opened.send("Lanjut?", PERSON);
     await until(() => !isBusy(store.getState()), "the follow-up");
     assert.equal(store.getState().conversation, target.id);
     await until(() => store.getState().history.conversations.find((entry) => entry.id === target.id)?.turns === 3, "the refreshed history");
@@ -151,7 +152,7 @@ describe("Riwayat in the store", () => {
 
   it("does not open another conversation while a question is running", async () => {
     const { store, host } = await riwayatRig();
-    store.getState().send("sedang berjalan");
+    store.getState().send("sedang berjalan", PERSON);
     await store.getState().openConversation(store.getState().history.conversations[3]?.id ?? "");
     assert.equal(store.getState().turns.length, 1);
     assert.equal(store.getState().turns[0]?.fresh, true);

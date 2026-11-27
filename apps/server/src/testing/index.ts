@@ -3,6 +3,7 @@
  */
 export { ARABIC, GOOD_ANSWER, ONE, TWO, answerJson, makePassage } from "./answer-fixtures.ts";
 export { fakeIndex } from "./fake-index.ts";
+export { READER_CITED, READER_NOTE, READER_PASSAGES, READER_TITLE, NEW_NOTE, OLD_NOTE, REVISED_NEW, REVISED_OLD } from "./reader-fixtures.ts";
 export type { FakeIndex } from "./fake-index.ts";
 export { seedConversations } from "./riwayat-seed.ts";
 export { memoryPipe } from "./memory-pipe.ts";

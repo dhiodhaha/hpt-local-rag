@@ -1,4 +1,4 @@
-import { Disclaimer } from "../ui/index.ts";
+import type { MouseEvent } from "react";
 import { COPY } from "./copy.ts";
 import type { RunView } from "./view.ts";
 
@@ -11,7 +11,7 @@ const BODY_STYLE = { fontSize: 14.5, fontWeight: 500, lineHeight: 1.55, color: "
 const CARD = { background: "var(--color-surface)", borderRadius: "var(--radius-lg)", padding: "22px 26px 22px" } as const;
 
 /** Clarify, insufficient, out of scope and declined: the four replies that are not an answer (Doop 6a to 6d). */
-export function ReplyView({ reply, onPick }: { reply: Reply; onPick: (option: string) => void }) {
+export function ReplyView({ reply, onPick }: { reply: Reply; onPick: (option: string, event: MouseEvent<HTMLButtonElement>) => void }) {
   if (reply.type === "clarify") {
     return (
       <section data-card="clarify">
@@ -20,7 +20,7 @@ export function ReplyView({ reply, onPick }: { reply: Reply; onPick: (option: st
         {reply.message === null ? null : <p style={{ ...BODY_STYLE, margin: "8px 4px 0" }}>{reply.message}</p>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
           {reply.options.map((option) => (
-            <button key={option} type="button" className="rv-chip" onClick={() => onPick(option)}>
+            <button key={option} type="button" className="rv-chip" onClick={(event) => onPick(option, event)}>
               {option}
             </button>
           ))}
@@ -44,15 +44,10 @@ export function ReplyView({ reply, onPick }: { reply: Reply; onPick: (option: st
   const copy = COPY.reply[reply.type];
   const warn = reply.type === "insufficient";
   return (
-    <>
-      <section style={CARD} data-card={reply.type}>
-        <div style={{ ...LABEL_STYLE, color: warn ? "var(--color-warn)" : LABEL_STYLE.color }}>{copy.label}</div>
-        <h3 style={TITLE_STYLE}>{copy.title}</h3>
-        <p style={BODY_STYLE}>{reply.message ?? copy.body}</p>
-      </section>
-      <div style={{ margin: "14px 4px 0" }}>
-        <Disclaimer t={COPY.disclaimer} />
-      </div>
-    </>
+    <section style={CARD} data-card={reply.type}>
+      <div style={{ ...LABEL_STYLE, color: warn ? "var(--color-warn)" : LABEL_STYLE.color }}>{copy.label}</div>
+      <h3 style={TITLE_STYLE}>{copy.title}</h3>
+      <p style={BODY_STYLE}>{reply.message ?? copy.body}</p>
+    </section>
   );
 }

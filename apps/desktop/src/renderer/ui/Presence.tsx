@@ -1,4 +1,16 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+
+/** Shorter than the arrival: the person has already decided. */
+export const EXIT_MS = 110;
+
+/** Keeps the last value while `value` is null, so a closing popup still has its content to show while it fades out. */
+export function useLast<T>(value: T | null): T | null {
+  const last = useRef<T | null>(value);
+  useEffect(() => {
+    if (value !== null) last.current = value;
+  });
+  return value ?? last.current;
+}
 
 /** `closing` is true for `exitMs` after `show` goes false, so CSS can run its exit transition before the children go. */
 export function usePresence(show: boolean, exitMs: number): { readonly mounted: boolean; readonly closing: boolean } {
