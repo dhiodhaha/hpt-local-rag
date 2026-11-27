@@ -40,7 +40,7 @@ const MAX_HISTORY_TURNS = 8;
 const HISTORY_TOKENS = 1500;
 
 const escapeAttr = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-const escapeText = (value: string) => value.replace(/</g, "&lt;");
+export const escapeText = (value: string) => value.replace(/</g, "&lt;");
 
 function attributes(pairs: readonly (readonly [string, string | number | null | undefined])[]): string {
   return pairs.flatMap(([name, value]) => (value === null || value === undefined || value === "" ? [] : [` ${name}="${escapeAttr(String(value))}"`])).join("");

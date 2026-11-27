@@ -10,3 +10,5 @@ export { runAnswerEval, readRecords } from "./runner.ts";
 export type { Run, RunCase, RunInput, RunRecord, RunSettings, StoppedBy } from "./runner.ts";
 export { GATE_TOLERANCE, HEADLINE_TARGET_MS, distOf, formatCategories, formatCategoryMatrix, formatChecks, formatAnswerComparison, formatCost, formatGate, formatLimiter, formatOverlap, gateOf, label, pairedHeadline, scoresOf, summarizeRun } from "./report.ts";
 export type { CategoryReport, ConfigReport, Dist, GateRule, LatencyBlock } from "./report.ts";
+export { firstId, followId, formatFollowups, historyFor, loadFollowups, pairsOf, summarizeFollowups, turnsOf } from "./followups.ts";
+export type { FollowupCase, FollowupReport, FollowupSet, RewriteStats, TurnStats } from "./followups.ts";

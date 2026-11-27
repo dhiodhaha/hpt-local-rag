@@ -23,7 +23,7 @@ function rig(script: ScriptedAttempt[], options: { hasPutusan?: boolean; connect
   const provider = scriptedProvider(script);
   const index = fakeIndex([ONE, TWO]);
   index.hasPutusan = () => options.hasPutusan ?? true;
-  const engine = createEngine({ index, provider, prompt: PROMPT, canary: "CANARY-test", traces: memoryTraceSink(), settings: answerConfig.answer });
+  const engine = createEngine({ index, provider, prompt: PROMPT, canary: "CANARY-test", traces: memoryTraceSink(), settings: { ...answerConfig.answer, rewrite: undefined } });
   const conversations = openConversations(path.join(tempDir(), "conversations"));
   const closed = { count: 0 };
   const deps: HostDeps = {

@@ -1,5 +1,5 @@
 import { createEngine, jsonlTraceSink, loadCanary, loadPromptTemplate, openConversations, type AnswerEngine, type Conversations, type EngineSettings, type TraceSink } from "./features/answer/index.ts";
-import { claudeProvider } from "./features/providers/index.ts";
+import { claudeProvider, type ApiCredential } from "./features/providers/index.ts";
 import { loadEmbedder, openIndex, type HptIndex } from "./features/search/index.ts";
 import { answerConfig, config } from "./shared/config.ts";
 
@@ -20,6 +20,8 @@ export type ComposeOptions = {
   readonly settings?: Partial<EngineSettings>;
   /** Written to in addition to data/traces/. The eval reads its own traces back through this. */
   readonly extraTraceSink?: TraceSink;
+  /** D34: the API key (and workspace) a model-calling eval runs on. The app and `hpt ask` leave it out, so they use the plan login. */
+  readonly api?: ApiCredential;
 };
 
 export async function compose(options: ComposeOptions = {}): Promise<Composed> {
@@ -28,7 +30,7 @@ export async function compose(options: ComposeOptions = {}): Promise<Composed> {
   const traces: TraceSink = { write: (trace) => [files, options.extraTraceSink].forEach((sink) => sink?.write(trace)) };
   const engine = createEngine({
     index,
-    provider: claudeProvider(),
+    provider: claudeProvider({ api: options.api }),
     prompt: loadPromptTemplate(answerConfig.systemPromptDoc),
     canary: loadCanary(answerConfig.canaryFile, process.env),
     traces,

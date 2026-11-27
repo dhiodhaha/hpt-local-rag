@@ -11,6 +11,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  *   node scripts/probe-thinking.mjs [variant ...]      default: every variant, on claude-sonnet-5-5 at low effort
  *   PROBE_MODEL=claude-opus-5-5 node scripts/probe-thinking.mjs baseline
  */
+if ((process.env.ANTHROPIC_API_KEY ?? "").trim() === "") {
+  console.error("This probe calls a model, and evals never run on the Claude plan login (D34). Set ANTHROPIC_API_KEY to a Claude Console key and run it again.");
+  process.exit(1);
+}
+const apiKey = process.env.ANTHROPIC_API_KEY;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { query } = await import(pathToFileURL(path.join(root, "apps/server/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs")).href);
 
@@ -39,7 +44,9 @@ fs.mkdirSync(outDir, { recursive: true });
 function isolatedEnv(extra) {
   const env = {};
   for (const [key, value] of Object.entries(process.env)) if (!/^(CLAUDE|ANTHROPIC|AI_AGENT|ENABLE_CLAUDEAI)/i.test(key)) env[key] = value;
-  return { ...env, ENABLE_CLAUDEAI_MCP_SERVERS: "false", ...extra };
+  const workspace = (process.env.ANTHROPIC_WORKSPACE_ID ?? "").trim();
+  const headers = workspace === "" ? {} : { ANTHROPIC_CUSTOM_HEADERS: `anthropic-workspace-id: ${workspace}` };
+  return { ...env, ANTHROPIC_API_KEY: apiKey, ...headers, ENABLE_CLAUDEAI_MCP_SERVERS: "false", ...extra };
 }
 
 async function probe(name) {

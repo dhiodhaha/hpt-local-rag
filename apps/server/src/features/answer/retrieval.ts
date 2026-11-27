@@ -1,17 +1,21 @@
 import type { Evidence, EvidenceLevel, HptIndex, Passage, PassageId, SearchHit, SearchOptions, SearchResult } from "../search/index.ts";
 import type { LedgerOrigin, SourceLedger } from "./ledger.ts";
+import type { RewriteResult } from "./rewrite.ts";
+import type { RewriteTrace } from "./trace.ts";
 import type { HistoryEntry, Turn } from "./types.ts";
 
 /**
  * Turns a Turn into the passages the model is shown. The app owns this (D1): retrieval, the context budget, carry-over.
- * `HptIndex.search` is consumed as is. The pure parts (queriesFor, packContext) are separate from the one impure call
- * (retrieve) so the budget and carry-over rules are tested with fabricated hits.
+ * `HptIndex.search` is consumed as is. The pure parts (carryOf, packContext) are separate from the one impure call (retrieve)
+ * so the budget and carry-over rules are tested with fabricated hits.
  *
- * Follow-up policy, until D9's rewrite exists behind the same `retrieve`:
- *   1. search the bare question. A first turn stops here.
- *   2. a follow-up whose evidence is not "strong" is searched again with the previous question prepended, and the better
- *      result by evidence level wins. A tie keeps the bare question, which has less topic bleed.
- *   3. carry-over: when the bare question was not strong, the passages the PREVIOUS turn cited are appended after the hits.
+ * Follow-up policy (D33). A first turn searches its question and stops.
+ *   1. The bare follow-up is searched, and at the same moment the rewriter turns it into a standalone query.
+ *   2. A rewrite that arrives is searched too, and the better result by evidence level wins. A tie goes to the rewrite, which
+ *      was written to stand alone. A bare question that beats the rewrite means the rewrite pulled in a topic the question left.
+ *   3. With no rewrite (budget spent, a failure, an unusable reply) the old rule applies: a bare result that is not "strong" is
+ *      searched again with the previous question prepended, and a tie keeps the bare question, which has less topic bleed.
+ *   4. Carry-over, always: the passages earlier turns cited follow the fresh hits, newest turn first, marked as prior-turn context.
  */
 export type RetrievalSettings = {
   readonly searchLimit: number;
@@ -24,17 +28,34 @@ export type Retrieved = {
   readonly evidence: Evidence;
   readonly scoped: readonly Passage[];
   readonly carry: readonly Passage[];
+  /** What the rewrite did, when this turn called it. */
+  readonly rewrite: RewriteTrace | null;
   readonly ms: number;
 };
 
+export type Rewriter = () => Promise<RewriteResult>;
+
 const LEVEL: Readonly<Record<EvidenceLevel, number>> = { absent: 0, weak: 1, strong: 2 };
+
+/** More than this and the Sumber panel and the budget fill with a long conversation's old topics. */
+export const MAX_CARRY = 8;
 
 export function queriesFor(turn: Turn): { readonly bare: string; readonly withHistory: string | null } {
   const previous = turn.history.at(-1);
   return { bare: turn.question, withHistory: previous === undefined ? null : `${previous.question} ${turn.question}` };
 }
 
-export async function retrieve(index: HptIndex, turn: Turn, settings: RetrievalSettings): Promise<Retrieved> {
+/** Every passage an earlier turn cited, newest turn first, each once. */
+export function carryIds(history: readonly HistoryEntry[]): PassageId[] {
+  const ids = [...history].reverse().flatMap((entry) => entry.cited);
+  return [...new Set(ids)].slice(0, MAX_CARRY);
+}
+
+function traceOf(rewrite: RewriteResult, picked: RewriteTrace["picked"]): RewriteTrace {
+  return { ms: rewrite.ms, used: rewrite.text !== null, fallback: rewrite.fallback, picked, text: rewrite.text };
+}
+
+export async function retrieve(index: HptIndex, turn: Turn, settings: RetrievalSettings, rewriter?: Rewriter): Promise<Retrieved> {
   const started = performance.now();
   const queries: string[] = [];
   const search = (query: string, options: SearchOptions = {}): Promise<SearchResult> => {
@@ -43,31 +64,51 @@ export async function retrieve(index: HptIndex, turn: Turn, settings: RetrievalS
   };
   const { bare, withHistory } = queriesFor(turn);
   const { scope } = turn;
+  const done = (fields: Pick<Retrieved, "hits" | "evidence"> & Partial<Pick<Retrieved, "scoped" | "carry" | "rewrite">>): Retrieved => ({
+    queries,
+    scoped: [],
+    carry: [],
+    rewrite: null,
+    ms: performance.now() - started,
+    ...fields,
+  });
 
   if (scope?.kind === "revision") {
     const found = index.getPassages([scope.active, scope.superseded]);
     const scoped = [scope.active, scope.superseded].flatMap((id) => found.get(id) ?? []);
     const result = await search(bare);
-    return { queries, hits: result.hits, evidence: result.evidence, scoped, carry: [], ms: performance.now() - started };
+    return done({ hits: result.hits, evidence: result.evidence, scoped });
   }
   if (scope?.kind === "document") {
     const inDocument = await search(bare, { filter: { noteIds: [scope.noteId] } });
     const overall = await search(bare);
     const evidence = inDocument.hits.length > 0 ? inDocument.evidence : overall.evidence;
-    return { queries, hits: overall.hits, evidence, scoped: inDocument.hits.map((hit) => hit.passage), carry: [], ms: performance.now() - started };
+    return done({ hits: overall.hits, evidence, scoped: inDocument.hits.map((hit) => hit.passage) });
   }
 
-  let result = await search(bare);
-  const previous = turn.history.at(-1);
-  let carry: Passage[] = [];
-  if (previous !== undefined && result.evidence.level !== "strong") {
-    if (withHistory !== null) {
-      const again = await search(withHistory);
-      if (LEVEL[again.evidence.level] > LEVEL[result.evidence.level]) result = again;
-    }
-    carry = [...index.getPassages(previous.cited).values()];
+  if (turn.history.length === 0) {
+    const result = await search(bare);
+    return done({ hits: result.hits, evidence: result.evidence });
   }
-  return { queries, hits: result.hits, evidence: result.evidence, scoped: [], carry, ms: performance.now() - started };
+
+  const rewriting = rewriter?.() ?? null;
+  const bareResult = await search(bare);
+  const rewritten = rewriting === null ? null : await rewriting;
+  const standaloneQuery = rewritten?.text ?? null;
+  let result = bareResult;
+  let picked: RewriteTrace["picked"] = null;
+  if (standaloneQuery !== null) {
+    const standalone = await search(standaloneQuery);
+    picked = LEVEL[standalone.evidence.level] >= LEVEL[bareResult.evidence.level] ? "rewrite" : "bare";
+    if (picked === "rewrite") result = standalone;
+  } else if (bareResult.evidence.level !== "strong" && withHistory !== null) {
+    const again = await search(withHistory);
+    if (LEVEL[again.evidence.level] > LEVEL[bareResult.evidence.level]) result = again;
+  }
+  const ids = carryIds(turn.history);
+  const found = index.getPassages(ids);
+  const carry = ids.flatMap((id) => found.get(id) ?? []);
+  return done({ hits: result.hits, evidence: result.evidence, carry, rewrite: rewritten === null ? null : traceOf(rewritten, picked) });
 }
 
 /** Characters divided by 3.2, rounded up. Claude's tokenizer is not available: the trace records this estimate next to the provider's real input count. */

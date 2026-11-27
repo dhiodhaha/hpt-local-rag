@@ -114,6 +114,7 @@ export function createHost(deps: HostDeps): Host {
       const conversation = ready.conversations.open(params.conversation);
       const summary = conversation.summary();
       if (summary === null) return { code: "not_found", message: "the conversation does not exist" };
+      ready.engine.warm({ followUp: true });
       const ids = [...new Set(conversation.turns.flatMap((turn) => turn.context))];
       return openedOf(summary, conversation.turns, ready.index.getPassages(ids));
     },

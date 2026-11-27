@@ -1,5 +1,7 @@
 # Thinking off on Sonnet 5.5, 2026-11-26
 
+> Measured on the owner's Claude plan login before D34; later evals run on an API key.
+
 This report holds numbers and mechanisms only. It checks one thing the answer eval left open: can any setting the Agent SDK reaches turn thinking off for Sonnet 5.5, so a Sonnet fallback or alternative could skip the 5 to 6 s the model spends thinking before it writes (see [answers-2026-11-26.md](answers-2026-11-26.md)).
 
 ## Verdict
