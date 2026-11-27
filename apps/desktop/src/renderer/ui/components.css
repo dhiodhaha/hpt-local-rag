@@ -271,12 +271,11 @@
 
 /* Aura */
 .aura {position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.aura-canvas {position:absolute;inset:0;width:100%;height:100%;display:block}
 .aura-l {position:absolute;inset:0;opacity:0;transition-property:opacity;transition-duration:600ms;transition-timing-function:ease-out}
 .aura-l[data-on="true"] {opacity:1}
 .aura-l[data-layer="idle"] {background:radial-gradient(80% 38% at 18% 100%,color-mix(in srgb,var(--color-aura-1) 30%,transparent),transparent 72%),radial-gradient(80% 38% at 50% 104%,color-mix(in srgb,var(--color-aura-2) 24%,transparent),transparent 72%),radial-gradient(80% 38% at 86% 100%,color-mix(in srgb,var(--color-aura-3) 28%,transparent),transparent 72%)}
-.aura-l[data-layer="compose"] {background:radial-gradient(70% 34% at 14% 62%,color-mix(in srgb,var(--color-aura-1) 46%,transparent),transparent 72%),radial-gradient(70% 32% at 50% 70%,color-mix(in srgb,var(--color-aura-2) 40%,transparent),transparent 72%),radial-gradient(70% 36% at 88% 60%,color-mix(in srgb,var(--color-aura-3) 46%,transparent),transparent 72%),radial-gradient(60% 30% at 66% 50%,color-mix(in srgb,var(--color-aura-4) 32%,transparent),transparent 72%)}
 .aura-l[data-layer="think"] {background:radial-gradient(72% 34% at 14% 2%,color-mix(in srgb,var(--color-aura-1) 50%,transparent),transparent 72%),radial-gradient(70% 32% at 50% 0%,color-mix(in srgb,var(--color-aura-2) 44%,transparent),transparent 72%),radial-gradient(72% 36% at 88% 4%,color-mix(in srgb,var(--color-aura-3) 50%,transparent),transparent 72%),radial-gradient(62% 30% at 64% 24%,color-mix(in srgb,var(--color-aura-4) 32%,transparent),transparent 72%)}
-.aura-l[data-layer="done"] {background:radial-gradient(72% 26% at 18% 0%,color-mix(in srgb,var(--color-aura-1) 16%,transparent),transparent 72%),radial-gradient(72% 26% at 84% 2%,color-mix(in srgb,var(--color-aura-3) 14%,transparent),transparent 72%)}
 
 /* Interactive parts that Doop drew as div or span are real buttons here, and a button shrink-wraps and centres its text where a div does not */
 .row, .nc, .nav, .mo, .sg[data-state="earlier"], .rr .body {width:100%;text-align:left}

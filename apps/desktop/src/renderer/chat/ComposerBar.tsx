@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import type { ModelOption as Option } from "@hpt/server/client";
 import { Composer, ModelChip, ModelGroupHead, ModelMenu, ModelOption } from "../ui/index.ts";
 import { COPY } from "./copy.ts";
@@ -76,9 +76,11 @@ export type ComposerBarProps = {
   onDraft: (text: string) => void;
   onChoose: (model: string | null) => void;
   onSend: (provenance: Provenance) => void;
+  /** The question box, for the light that gathers on it while typing. */
+  boxRef?: Ref<HTMLDivElement>;
 };
 
-export function ComposerBar({ draft, busy, followUp, disabled, models, choice, connected, onDraft, onChoose, onSend }: ComposerBarProps) {
+export function ComposerBar({ draft, busy, followUp, disabled, models, choice, connected, onDraft, onChoose, onSend, boxRef }: ComposerBarProps) {
   const field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     const element = field.current;
@@ -100,7 +102,7 @@ export function ComposerBar({ draft, busy, followUp, disabled, models, choice, c
     submit(provenanceOf("enter", event));
   };
   return (
-    <div data-busy={busy || disabled ? "true" : "false"}>
+    <div ref={boxRef} data-busy={busy || disabled ? "true" : "false"}>
       <Composer
         placeholder={followUp ? COPY.placeholderFollowUp : COPY.placeholder}
         field={<textarea ref={field} rows={1} value={draft} placeholder={followUp ? COPY.placeholderFollowUp : COPY.placeholder} aria-label={COPY.placeholder} onChange={(event) => onDraft(event.target.value)} onKeyDown={onKey} autoFocus />}

@@ -76,7 +76,7 @@ export function motionVars(config: MotionConfig, reduced: boolean): Readonly<Rec
   };
 }
 
-const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
+export const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
 
 export function installMotion(root: HTMLElement, win: Pick<Window, "matchMedia"> = window, config: MotionConfig = MOTION): () => void {
   const query = win.matchMedia(REDUCED_QUERY);

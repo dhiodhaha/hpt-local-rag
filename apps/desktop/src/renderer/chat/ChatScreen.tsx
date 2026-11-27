@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, MotionConfig } from "motion/react";
 import type { PassageId } from "@hpt/server/client";
 import { MOTION } from "../motion.ts";
-import { StateNotice, TipButton } from "../ui/index.ts";
+import { auraStateOf, isFirstAsk } from "../aura.ts";
+import { Aura, StateNotice, TipButton } from "../ui/index.ts";
 import { ReaderLayer } from "../reader/index.ts";
 import { AllConversations } from "./AllConversations.tsx";
 import { ComposerBar } from "./ComposerBar.tsx";
@@ -58,6 +59,7 @@ export function ChatScreen() {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const hits = useRef(0);
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
 
   const latest = turns.at(-1);
   const panel = latest === undefined || screen === "all" ? null : panelOf(latest.run);
@@ -151,12 +153,13 @@ export function ChatScreen() {
       onDraft={setDraft}
       onChoose={chooseModel}
       onSend={(provenance) => ask(draft, provenance)}
+      boxRef={setBox}
     />
   );
 
   const screens = {
     all: <AllConversations />,
-    home: <Home draft={draft} notice={<HostNotice />} bar={bar} firstVisit={firstVisit} unusable={unusable} onAsk={ask} />,
+    home: <Home notice={<HostNotice />} bar={bar} firstVisit={firstVisit} unusable={unusable} onAsk={ask} />,
     chat: (
       <Conversation
         turns={turns}
@@ -204,6 +207,7 @@ export function ChatScreen() {
               </TipButton>
             </div>
           )}
+          <Aura state={auraStateOf({ screen: screenName, firstAsk: isFirstAsk(turns), busy, draft })} box={box} />
           <div key={shownName} className="cv-screen" data-leaving={leaving} inert={leaving}>
             {leaving ? lastChat.current : screens[screenName]}
           </div>
