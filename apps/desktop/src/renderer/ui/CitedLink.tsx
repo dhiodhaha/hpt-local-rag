@@ -6,7 +6,7 @@ export type CitedLinkState = (typeof CITED_LINK_STATES)[number];
 export type CitedLinkProps = {
   state?: CitedLinkState;
   where: string;
-  snippet: string;
+  snippet: ReactNode;
   /** The label of the `current` and `revised` states. */
   status?: string;
   mark?: ReactNode;

@@ -137,6 +137,18 @@
   margin-top: 4px;
   text-wrap: pretty;
 }
+.ar-run {
+  font-family: var(--font-arabic);
+  font-size: 1.25em;
+  line-height: 1;
+  unicode-bidi: isolate;
+}
+.sum:has(.ar-run),
+.it-quote:has(.ar-run),
+.cl-sn:has(.ar-run) {
+  line-height: 2;
+  overflow-wrap: anywhere;
+}
 .it-quote {
   margin-top: 10px;
   padding: 10px 12px;

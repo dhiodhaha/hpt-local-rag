@@ -1,4 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
+import { ArabicText } from "../ArabicText.tsx";
 import { EXCEPTION_WITHHELD, type Dalil, type Note, type PassageId, type Prose, type SourceCard, type WithheldException } from "@hpt/server/client";
 import { MOTION } from "../motion.ts";
 import { Badge, Disclaimer, ExpandRow, Presence, SkeletonRow, SourceTag, SwapSlot, UnverifiedRefNotice, VerifyMark, type BadgeTone, type SkeletonRowPosition } from "../ui/index.ts";
@@ -81,7 +82,11 @@ function NoteItem({ note, context, index }: { note: Note | WithheldException; co
       <p className="it-body">
         {note.text} <Cites ids={note.sources} context={context} />
       </p>
-      {note.quote === null ? null : <p className="it-quote">{note.quote.text}</p>}
+      {note.quote === null ? null : (
+        <p className="it-quote">
+          <ArabicText text={note.quote.text} />
+        </p>
+      )}
     </div>
   );
 }
