@@ -101,6 +101,8 @@ type Scenario = {
   readonly cuts?: Readonly<Record<string, Cut>>;
   /** `hpt host --scenario` fills the conversations folder with a fictional history first (riwayat-seed.ts). */
   readonly seed?: boolean;
+  /** D36: the engine has title settings, so the host calls it after the first answer. The script then holds the title call's reply right after that answer. */
+  readonly titled?: boolean;
   /** What the fake index holds, in retrieval order. Default: SCENARIO_PASSAGES. */
   readonly passages?: readonly Passage[];
 };
@@ -155,6 +157,8 @@ export const SCENARIOS = {
     script: (size) => [stream(answerJson(INFERRED), size, 0)],
     cuts: { verifying: (event) => event.kind === "progress" && event.prose.some((span) => span.kind === "cite") },
   },
+  /** D36: after the first answer the conversation is titled, and the sidebar shows the title in place of the question. The second attempt is the title call. */
+  titled: { question: QUESTION, script: (size) => [stream(answerJson(THREE_CITED), size, 0), stream("Kompos dari sisa daun", size, 0)], titled: true },
   /** A second question in the same conversation, for the grouped Sumber panel. The middle attempt is D33's rewrite call, which runs before the second answer. */
   "follow-up": {
     question: QUESTION,
@@ -273,7 +277,7 @@ export function scenarioRig(name: ScenarioName, options: ScenarioOptions = {}): 
     prompt: loadPromptTemplate(answerConfig.systemPromptDoc),
     canary: "CANARY-scenario",
     traces: memoryTraceSink(),
-    settings: answerConfig.answer,
+    settings: scenario.titled === true ? { ...answerConfig.answer, title: answerConfig.title } : answerConfig.answer,
   });
   const cut = cutOf(name, options.cut);
   return { engine: cut === null ? engine : frozenAt(engine, cut), index, question: scenario.question, connection: scenario.connection ?? CONNECTED };

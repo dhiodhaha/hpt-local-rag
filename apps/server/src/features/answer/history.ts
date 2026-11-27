@@ -8,8 +8,8 @@ import type { Answer, CompleteAnswer, Prose, Scope, SourceCard } from "./types.t
  * What a UI needs to list, search and reopen stored conversations. Pure: the files are read in conversation.ts and handed in as
  * StoredTurns, so every rule here is testable without a disk. Everything in this file is JSON and crosses the host wire.
  *
- * The first question is the default title. A rename is stored beside the conversation (never inside its append-only turn file,
- * which `pnpm hpt ask` shares), and an empty rename clears it.
+ * The first question is the default title, until a generated title (D36) or a rename replaces it. Both are stored beside the conversation
+ * (never inside its append-only turn file, which `pnpm hpt ask` shares), and an empty rename clears it.
  */
 export type ConversationSummary = {
   readonly id: ConversationId;
@@ -88,7 +88,8 @@ export function answerTexts(answer: Answer): string[] {
   return pieces.flatMap((piece) => (piece === null || piece.trim() === "" ? [] : [collapse(piece)]));
 }
 
-export function summaryOf(id: ConversationId, turns: readonly StoredTurn[], renamedTo: string | null): ConversationSummary | null {
+/** `generated` marks a title the engine wrote (D36). It shows as the title, but it is not a rename. */
+export function summaryOf(id: ConversationId, turns: readonly StoredTurn[], renamedTo: string | null, generated = false): ConversationSummary | null {
   const first = turns[0];
   const last = turns.at(-1);
   if (first === undefined || last === undefined) return null;
@@ -96,7 +97,7 @@ export function summaryOf(id: ConversationId, turns: readonly StoredTurn[], rena
   return {
     id,
     title: renamedTo ?? collapse(first.question),
-    renamed: renamedTo !== null,
+    renamed: renamedTo !== null && !generated,
     turns: turns.length,
     startedAt: first.at,
     updatedAt: last.at,

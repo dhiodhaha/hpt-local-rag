@@ -18,6 +18,7 @@ const EXPECTED: Record<ScenarioName, Outcome["kind"]> = {
   "follow-up": "delivered",
   "many-dalil": "delivered",
   "arabic-rows": "delivered",
+  titled: "delivered",
   restart: "delivered",
   "unverified-first": "delivered",
   fallback: "delivered",

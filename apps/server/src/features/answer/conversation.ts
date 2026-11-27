@@ -17,7 +17,9 @@ import type { CompleteAnswer, HistoryEntry, Scope, Turn } from "./types.ts";
  * filename and there is no state to sync.
  *
  * A rename lives in `<id>.meta.json` beside the turns, so the append-only turn file that `pnpm hpt ask` shares is never rewritten
- * and two writers never share a file.
+ * and two writers never share a file. A title the engine generated after the first answer (D36) lives in the same file, marked
+ * `generated`, and is stored only while nobody has named the conversation: a person's rename always wins, also over a title that
+ * was still being generated when they typed it.
  *
  * Only delivered answers are stored. Clarify, insufficient, out_of_scope and declined count, because a tapped clarifying
  * option is a follow-up. A withheld, failed or cancelled ask leaves no turn, so the user asks again against an unchanged
@@ -55,6 +57,11 @@ export type Conversations = {
   search(query: string): SearchResult;
   /** An empty title clears the rename. Returns null when there is no such conversation. */
   rename(id: ConversationId, title: string): ConversationSummary | null;
+  /**
+   * Stores a generated title. Returns the summary when it was stored, and null when it was not: there is no such conversation, the
+   * title is empty, or the conversation already has a title or was renamed since this process started (also back to the question).
+   */
+  autoTitle(id: ConversationId, title: string): ConversationSummary | null;
   /** Deletes the turns and the rename. Idempotent: a conversation that is already gone is not an error. */
   remove(id: ConversationId): void;
 };
@@ -86,14 +93,19 @@ function readTurns(file: string): StoredTurn[] {
 
 const metaFile = (dir: string, id: ConversationId): string => path.join(dir, `${id}.meta.json`);
 
-function readTitle(dir: string, id: ConversationId): string | null {
+type StoredTitle = { readonly title: string; readonly generated: boolean };
+
+function readTitle(dir: string, id: ConversationId): StoredTitle | null {
   try {
-    const meta = JSON.parse(fs.readFileSync(metaFile(dir, id), "utf8")) as { title?: unknown };
-    return typeof meta.title === "string" ? normalizeTitle(meta.title) : null;
+    const meta = JSON.parse(fs.readFileSync(metaFile(dir, id), "utf8")) as { title?: unknown; generated?: unknown };
+    const title = typeof meta.title === "string" ? normalizeTitle(meta.title) : null;
+    return title === null ? null : { title, generated: meta.generated === true };
   } catch {
     return null;
   }
 }
+
+const summaryWith = (id: ConversationId, turns: readonly StoredTurn[], stored: StoredTitle | null) => summaryOf(id, turns, stored?.title ?? null, stored?.generated === true);
 
 export function newId(): ConversationId {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
@@ -106,6 +118,8 @@ export type ConversationsOptions = {
 };
 
 export function openConversations(dir: string, options: ConversationsOptions = {}): Conversations {
+  /** Conversations a person has renamed in this run, even back to the question, so a title still being generated never replaces that. */
+  const named = new Set<ConversationId>();
   const files = () => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith(".jsonl")).sort() : []);
 
   function conversation(id: ConversationId): Conversation {
@@ -116,7 +130,7 @@ export function openConversations(dir: string, options: ConversationsOptions = {
       get turns() {
         return turns;
       },
-      summary: () => summaryOf(id, turns, readTitle(dir, id)),
+      summary: () => summaryWith(id, turns, readTitle(dir, id)),
       turn: (question, scope = null) => ({ question, history: historyOf(turns), scope }),
       async ask(engine, question, options = {}) {
         const { scope = null, ...rest } = options;
@@ -137,7 +151,7 @@ export function openConversations(dir: string, options: ConversationsOptions = {
   const stored = () =>
     ids().flatMap((id) => {
       const turns = readTurns(path.join(dir, `${id}.jsonl`));
-      const summary = summaryOf(id, turns, readTitle(dir, id));
+      const summary = summaryWith(id, turns, readTitle(dir, id));
       return summary === null ? [] : [{ summary, turns }];
     });
 
@@ -160,14 +174,24 @@ export function openConversations(dir: string, options: ConversationsOptions = {
       const turns = readTurns(path.join(dir, `${id}.jsonl`));
       if (turns.length === 0) return null;
       const next = normalizeTitle(title);
+      named.add(id);
       if (next === null) fs.rmSync(metaFile(dir, id), { force: true });
       else fs.writeFileSync(metaFile(dir, id), JSON.stringify({ title: next }));
       return summaryOf(id, turns, next);
+    },
+    autoTitle(id, title) {
+      if (!isConversationId(id)) throw new Error(`"${id}" is not a conversation id.`);
+      const turns = readTurns(path.join(dir, `${id}.jsonl`));
+      const next = normalizeTitle(title);
+      if (turns.length === 0 || next === null || named.has(id) || readTitle(dir, id) !== null) return null;
+      fs.writeFileSync(metaFile(dir, id), JSON.stringify({ title: next, generated: true }));
+      return summaryOf(id, turns, next, true);
     },
     remove(id) {
       if (!isConversationId(id)) throw new Error(`"${id}" is not a conversation id.`);
       fs.rmSync(path.join(dir, `${id}.jsonl`), { force: true });
       fs.rmSync(metaFile(dir, id), { force: true });
+      named.delete(id);
       if (options.tracesDir !== undefined) scrubConversation(options.tracesDir, id);
     },
   };

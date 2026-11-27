@@ -1,4 +1,4 @@
-import { openedOf, type AnswerEngine, type AnswerEvent, type Conversations } from "../answer/index.ts";
+import { openedOf, type AnswerEngine, type AnswerEvent, type ConversationId, type ConversationSummary, type Conversations, type Finished } from "../answer/index.ts";
 import { CLAUDE_MODELS, type Connection, type Effort } from "../providers/index.ts";
 import type { HptIndex } from "../search/index.ts";
 import { PROTOCOL_VERSION, type AskParams, type CallId, type FromHost, type HostError, type HostStatus, type MethodName, type Methods, type ModelOption, type UnaryMethod } from "./client.ts";
@@ -15,6 +15,10 @@ import { ToHostSchema } from "./schema.ts";
  *                its composer on `finished` can never race the history the next ask reads
  *   cancel       one AbortController per call, aborted by `cancel`, by `close`, or by the parent going away
  *   guarantee    per call id: events, then exactly one result or error. A call id is never reused
+ *
+ * A conversation is titled after its first answer (D36). The title is not part of the ask: it starts after the result is sent, takes as
+ * long as its budget and no longer, and arrives as its own `title` frame. A person's rename always wins, so a title that arrives
+ * after it is dropped.
  *
  * Riwayat (list, open, search, rename, remove) is answered from the conversation files, one request and one result. `passages` is the
  * reader's: one note's citable passages in reading order, from the index. `remove`
@@ -103,6 +107,21 @@ export function createHost(deps: HostDeps): Host {
     });
     if (held.finished !== null) send({ kind: "event", id, event: held.finished });
     send({ kind: "result", id, result: { conversation: conversation.id, turn, askId: finished.id } });
+    if (conversation.turns.length === 1 && conversation.turns[0]?.id === finished.id) void titled(ready, conversation.id, params.question, finished, send);
+  }
+
+  async function titled(ready: Backend, id: ConversationId, question: string, finished: Finished, send: (frame: FromHost) => void): Promise<void> {
+    const stored: { summary: ConversationSummary | null } = { summary: null };
+    const keep = (title: string) => {
+      stored.summary = ready.conversations.autoTitle(id, title);
+      return stored.summary !== null;
+    };
+    try {
+      await ready.engine.title(finished, question, keep);
+      if (stored.summary !== null && !closed) send({ kind: "title", conversation: stored.summary });
+    } catch (cause: unknown) {
+      log(`title ${id} failed: ${cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)}`);
+    }
   }
 
   type Call<M extends UnaryMethod> = { readonly id: CallId; readonly method: M; readonly params: Methods[M]["params"] };

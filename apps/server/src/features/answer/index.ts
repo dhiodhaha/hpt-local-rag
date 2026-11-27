@@ -7,6 +7,7 @@
 export { createEngine } from "./engine.ts";
 export type { AnswerEngine, AskOptions, EngineDeps, EngineSettings, Finished, WarmOptions } from "./engine.ts";
 export type { RewriteSettings } from "./rewrite.ts";
+export type { TitleResult, TitleSettings } from "./title.ts";
 
 export { openConversations, historyOf } from "./conversation.ts";
 export type { Conversation, Conversations, StoredTurn } from "./conversation.ts";
@@ -21,7 +22,7 @@ export type { PromptTemplate } from "./prompt.ts";
 export { loadCanary } from "./tripwire.ts";
 
 export { jsonlTraceSink, memoryTraceSink, scrubConversation } from "./trace.ts";
-export type { AttemptTrace, FindingTrace, RewriteTrace, Trace, TraceSink } from "./trace.ts";
+export type { AttemptTrace, FindingTrace, RewriteTrace, TitleTrace, Trace, TraceSink } from "./trace.ts";
 
 export { FINDING_CODES } from "./policy.ts";
 export type { FindingCode } from "./policy.ts";

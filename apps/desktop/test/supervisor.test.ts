@@ -10,8 +10,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const scenarioLaunch = (delayMs: number): HostLaunch =>
-  hostLaunch({ repoRoot, scenario: { name: "settled", delayMs, cut: null }, env: { ...process.env, HPT_NODE: process.execPath } });
+const scenarioLaunch = (delayMs: number, name = "settled"): HostLaunch =>
+  hostLaunch({ repoRoot, scenario: { name, delayMs, cut: null }, env: { ...process.env, HPT_NODE: process.execPath } });
 
 const crashing = (): HostLaunch => ({ ...scenarioLaunch(0), entry: path.join(here, "fixtures", "crash.mjs"), args: [] });
 
@@ -64,6 +64,24 @@ describe("the supervisor with a real host process", () => {
       sendA(ask("mine"));
       await until(() => a.frames.some((frame) => frame.kind === "result"), "the result");
       assert.equal(b.frames.some((frame) => frame.kind === "event" || frame.kind === "result"), false);
+    } finally {
+      await supervisor.close();
+    }
+  });
+
+  it("sends a generated title to every window, not only to the one that asked", async () => {
+    const supervisor = startSupervisor({ launch: () => scenarioLaunch(0, "titled"), log: () => {} });
+    try {
+      const a = fakeWindow();
+      const b = fakeWindow();
+      const sendA = supervisor.connect(a.window);
+      supervisor.connect(b.window);
+      await until(() => supervisor.state() === "ready", "ready");
+      sendA(ask("one"));
+      await until(() => [a, b].every((window) => window.frames.some((frame) => frame.kind === "title")), "the title in both windows");
+      const title = b.frames.find((frame) => frame.kind === "title");
+      assert.equal(title?.kind === "title" ? title.conversation.title : null, "Kompos dari sisa daun");
+      assert.equal(b.frames.some((frame) => frame.kind === "result"), false);
     } finally {
       await supervisor.close();
     }

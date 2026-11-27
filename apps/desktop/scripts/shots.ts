@@ -85,6 +85,7 @@ const SHOTS: readonly Shot[] = [
   { file: "56-reader-tj-citation", scenario: "reader-tj", after: (page) => openFromCitation(page, 1), frame: "D9.18 Halaman buku: Tanya Jawab fiktif dibuka dari tanda kutip 1" },
   { file: "57-reader-tj-second", scenario: "reader-tj", after: (page) => openFromCitation(page, 2), frame: "D9.18 Halaman buku: Tanya Jawab bernomor satu baris, dibuka dari tanda kutip 2" },
   { file: "58-sumber-arabic-rows", scenario: "arabic-rows", after: arabicRowsShowTheirBeginning, frame: "D9.20 baris Sumber satu baris dengan teks Arab panjang: awal di kanan, … di kiri; baris campuran tetap berurutan" },
+  { file: "59-title-in-sidebar", scenario: "titled", after: titleReplacesQuestion, frame: "D36 judul percakapan dari Haiku menggantikan pertanyaan di sidebar setelah jawaban pertama" },
   { file: "38-reader-closed-focus", scenario: "reader", after: closeWithEscape, frame: "Esc menutup, fokus kembali ke tanda kutip" },
 ];
 
@@ -325,6 +326,16 @@ async function arabicRowsShowTheirBeginning(page: Page): Promise<void> {
   });
   if (problems.length > 0) throw new Error(`Arabic rows are wrong: ${problems.join("; ")}`);
   if (arabicRows.filter((row) => row.cut).length < 4) throw new Error("fewer than four Arabic rows are cut, so the check proves little");
+}
+
+/** The first answer is on screen first and the title follows: the row ends up with the title and not the question, and it is not a rename. */
+async function titleReplacesQuestion(page: Page): Promise<void> {
+  const row = page.locator(".rw-side .rr-t");
+  await page.locator(".rw-side .rr-t", { hasText: "Kompos dari sisa daun" }).waitFor({ timeout: 10_000 });
+  const titles = await row.allInnerTexts();
+  if (titles.length !== 1) throw new Error(`expected one row in the sidebar, found ${titles.length}`);
+  if (titles[0]?.includes("Apakah")) throw new Error("the row still shows the question");
+  await page.waitForTimeout(300);
 }
 
 async function hoverPanelIcon(page: Page): Promise<void> {
