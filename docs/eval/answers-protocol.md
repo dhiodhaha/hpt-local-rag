@@ -1,6 +1,6 @@
 # Answer eval protocol
 
-This page is written before any model run. It fixes the subset, the sweep, the quality gate and the decision rules, so no result can move them. The report that follows, `answers-<date>.md`, holds numbers and ids only.
+This page is written before any model run. It fixes the subset, the sweep, the quality gate and the decision rules, so no result can move them. The report that follows, `answers-<date>.md`, holds numbers and ids only. A model-calling run needs `ANTHROPIC_API_KEY`, prints a cost estimate first and runs only with `--confirm` (D34). The sweep described here ran on the plan login on 2026-11-26.
 
 ## What the eval decides
 
@@ -84,3 +84,7 @@ Written before the sweep.
 ## Cost accounting
 
 A model call is one answer attempt. A retry is a second call, and each granted extra tool call adds one more model round trip. The Claude process also sends one small Haiku request per attempt to title the session, which the SDK does not allow us to switch off. The report gives answers asked, attempts, tool round trips, and token totals from the SDK's own usage.
+
+## Follow-up run
+
+The 40-question subset has first turns only, so follow-up latency has its own small run: two-turn conversations in `data/eval/followup-cases.json` (local, never committed), each a first question and a follow-up marked `continue` or `shift`. `hpt eval followups` asks them through the same engine, the follow-up with the history its first turn left, and `hpt eval followups-report <run id>...` prints numbers and case ids only: time to first text and headline (p50, p90, mean), the share that called a tool, whether the context held a first-turn citation, citations outside the context, first-turn citations reused by a `continue` and by a `shift` (topic bleed), and the rewrite's time and fallbacks. The first run id is the reference. The first-turn columns are the same code path in both runs, so they show the noise floor.

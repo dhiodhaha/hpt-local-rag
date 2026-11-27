@@ -6,6 +6,7 @@ import { assertProviderContract, profileKey, type ProviderEvent, type RunProfile
 import { fakeSdk, successResult, textDelta, toolStart, type FakeSdk } from "./fake-claude-sdk.ts";
 
 const profile = (overrides: Partial<RunProfile> = {}): RunProfile => ({
+  lane: "answer",
   model: "claude-test",
   effort: "medium",
   system: "system prompt",
@@ -131,6 +132,52 @@ describe("the Claude provider", () => {
     assert.equal(sdk.queries.length, 0);
     await settle();
     assert.equal(sdk.startups.length, 2);
+    await provider.close();
+  });
+
+  it("keeps one warm process per lane, so the rewrite's boot never replaces the answer's", async () => {
+    const sdk = fakeSdk();
+    const provider = claudeProvider({ sdk });
+    const rewrite = profile({ lane: "rewrite", model: "claude-small", tools: [] });
+    provider.warm(profile());
+    provider.warm(rewrite);
+    await settle();
+    assert.equal(sdk.startups.length, 2);
+    assert.deepEqual(sdk.startups.map((boot) => boot.warm?.closed), [false, false]);
+
+    const events = await collect(provider.run({ profile: rewrite, user: "q", tools: noTools }, new AbortController().signal));
+    const started = events[0];
+    assert.equal(started?.kind === "started" && started.warm, true);
+    assert.equal(sdk.startups[1]?.warm?.queried?.prompt, "q");
+    assert.equal(sdk.startups[0]?.warm?.queried, null);
+    await provider.close();
+    assert.equal(sdk.startups[0]?.warm?.closed, true);
+  });
+
+  it("does not boot a replacement after serving the rewrite lane: the engine warms it when an ask ends", async () => {
+    const sdk = fakeSdk();
+    const provider = claudeProvider({ sdk });
+    const rewrite = profile({ lane: "rewrite", model: "claude-small", tools: [] });
+    provider.warm(rewrite);
+    await settle();
+    await collect(provider.run({ profile: rewrite, user: "q", tools: noTools }, new AbortController().signal));
+    await settle();
+    assert.equal(sdk.startups.length, 1);
+    await provider.close();
+  });
+
+  it("closes a claimed process and ends aborted when the run was cancelled while it waited for the claim", async () => {
+    const sdk = fakeSdk();
+    sdk.startupDelayMs = 40;
+    const provider = claudeProvider({ sdk });
+    provider.warm(profile());
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 10);
+    const events = await collect(provider.run({ profile: profile(), user: "q", tools: noTools }, controller.signal));
+    const end = events.at(-1);
+    assert.ok(end?.kind === "end" && !end.outcome.ok && end.outcome.failure.code === "aborted");
+    assert.equal(sdk.startups[0]?.warm?.closed, true);
+    assert.equal(sdk.startups[0]?.warm?.queried, null);
     await provider.close();
   });
 

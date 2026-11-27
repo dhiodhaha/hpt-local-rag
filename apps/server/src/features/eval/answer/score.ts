@@ -87,7 +87,7 @@ export function matchesFictional(passage: Passage, ref: NonNullable<AnswerCase["
   return passage.year === ref.year && passage.number !== null && Number(passage.number) === Number(ref.number);
 }
 
-function timingOf(finished: Finished): Timing {
+export function timingOf(finished: Finished): Timing {
   const { attempts, totalMs } = finished.trace;
   const marks = (name: string) => attempts.flatMap((attempt) => attempt.committedMs.filter((mark) => mark.name === name).map((mark) => mark.ms));
   const last = attempts.at(-1);

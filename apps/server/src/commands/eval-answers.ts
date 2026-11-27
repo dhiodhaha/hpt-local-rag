@@ -15,8 +15,11 @@ import {
   formatCost,
   formatGate,
   formatLimiter,
+  formatFollowups,
   formatOverlap,
   hashCases,
+  historyFor,
+  loadFollowups,
   loadSubset,
   lockOf,
   pairedHeadline,
@@ -24,7 +27,9 @@ import {
   readRecords,
   runAnswerEval,
   scoresOf,
+  summarizeFollowups,
   summarizeRun,
+  turnsOf,
   withoutWhy,
   type AnswerCase,
   type Category,
@@ -35,17 +40,24 @@ import {
 import { loadEmbedder, openIndex } from "../features/search/index.ts";
 import { answerConfig, answerEvalConfig, config } from "../shared/config.ts";
 import { MODELS } from "./ask.ts";
+import { GATE_OPTIONS, GATE_USAGE, gateEval, requireApi } from "./eval-guard.ts";
 
 export const EVAL_ANSWERS_USAGE = `Usage:
   hpt eval answers-draft                       draft the 40 into data/eval/answer-subset.draft.json
   hpt eval answers-lock                        freeze the draft: data/eval/answer-subset.json and docs/eval/answer-subset.lock.json
   hpt eval answers [--model sonnet|opus|haiku|<id>] [--effort low|medium|high] [--max-extra-calls <n>]
-                   [--run <id>] [--category <name>] [--first <n>] [--pause <ms>]
-                                               run the locked subset one question at a time; run it again to resume
+                   [--run <id>] [--category <name>] [--first <n>] [--pause <ms>] ${GATE_USAGE}
+                                               run the locked subset one question at a time; run it again to resume.
+                                               Needs ANTHROPIC_API_KEY (+ ANTHROPIC_WORKSPACE_ID for an organization key), prints a cost estimate and waits for --confirm
   hpt eval answers-report <run id>... [--out <file>]
                                                numbers and ids for the runs. The first run is the reference for the gate
   hpt eval answers-spread <run id> <repeat run id>
-                                               same-question spread between two runs of one configuration`;
+                                               same-question spread between two runs of one configuration
+  hpt eval followups [--model ...] [--effort ...] [--max-extra-calls <n>] [--run <id>] [--first <n>] [--pause <ms>] ${GATE_USAGE}
+                                               run the two-turn conversations of data/eval/followup-cases.json, first turn then follow-up.
+                                               Needs ANTHROPIC_API_KEY (+ ANTHROPIC_WORKSPACE_ID for an organization key), prints a cost estimate and waits for --confirm
+  hpt eval followups-report <run id>... [--out <file>]
+                                               follow-up latency, tool use and citation numbers for the runs`;
 
 const byId = (a: { readonly id: string }, b: { readonly id: string }) => Number(a.id > b.id) - Number(a.id < b.id);
 
@@ -120,9 +132,10 @@ function parseCount(text: string | undefined, name: string): number | undefined 
 }
 
 export async function runCommand(argv: string[]): Promise<number> {
+  const api = requireApi();
   const { values } = parseArgs({
     args: argv,
-    options: { model: { type: "string" }, effort: { type: "string" }, "max-extra-calls": { type: "string" }, run: { type: "string" }, category: { type: "string" }, first: { type: "string" }, pause: { type: "string" } },
+    options: { model: { type: "string" }, effort: { type: "string" }, "max-extra-calls": { type: "string" }, run: { type: "string" }, category: { type: "string" }, first: { type: "string" }, pause: { type: "string" }, ...GATE_OPTIONS },
   });
   if (values.effort !== undefined && !["low", "medium", "high"].includes(values.effort)) throw new Error(`--effort is low, medium or high, not "${values.effort}".`);
   if (values.category !== undefined && !(CATEGORIES as readonly string[]).includes(values.category)) throw new Error(`--category is one of ${CATEGORIES.join(", ")}.`);
@@ -138,9 +151,12 @@ export async function runCommand(argv: string[]): Promise<number> {
     .slice(0, parseCount(values.first, "first"));
   const runId = values.run ?? runIdOf(settings);
   const runFile = runFileOf(runId);
+  const done = new Set(readRecords(runFile).map((record) => record.caseId));
+  const pending = cases.filter((item) => !done.has(item.id));
+  if (!gateEval({ model: settings.model, effort: settings.effort, pending: pending.length }, values)) return 1;
 
   // A spent limit stops the run so it resumes on the same model, instead of finishing on another one.
-  const composed = await compose({ settings: { ...settings, fallbacks: {} } });
+  const composed = await compose({ settings: { ...settings, fallbacks: {} }, api });
   try {
     // The first search loads the embedding model, about a second. The app loads it at launch, so the eval does too.
     await composed.index.search("shalat", { limit: 1 });
@@ -267,12 +283,93 @@ export function spreadCommand(argv: string[]): number {
   }
 }
 
+const followupRunFileOf = (runId: string) => path.join(answerEvalConfig.runsDir, `followups-${runId}.jsonl`);
+
+export async function followupsCommand(argv: string[]): Promise<number> {
+  const api = requireApi();
+  const { values } = parseArgs({
+    args: argv,
+    options: { model: { type: "string" }, effort: { type: "string" }, "max-extra-calls": { type: "string" }, run: { type: "string" }, first: { type: "string" }, pause: { type: "string" }, ...GATE_OPTIONS },
+  });
+  if (values.effort !== undefined && !["low", "medium", "high"].includes(values.effort)) throw new Error(`--effort is low, medium or high, not "${values.effort}".`);
+  const settings = {
+    model: values.model === undefined ? answerConfig.answer.model : (MODELS[values.model] ?? values.model),
+    effort: (values.effort ?? answerConfig.answer.effort) as Effort,
+    maxExtraToolCalls: parseCount(values["max-extra-calls"], "max-extra-calls") ?? answerConfig.answer.maxExtraToolCalls,
+  };
+  const set = loadFollowups(answerEvalConfig.followupFile);
+  const cases = set.cases.slice(0, parseCount(values.first, "first"));
+  const runId = values.run ?? `${runIdOf(settings)}-followups`;
+  const runFile = followupRunFileOf(runId);
+  const done = new Set(readRecords(runFile).map((record) => record.caseId));
+  const pending = turnsOf(cases).filter((turn) => !done.has(turn.id));
+  const rewrites = pending.filter((turn) => turn.id.endsWith("-2")).length;
+  if (!gateEval({ model: settings.model, effort: settings.effort, pending: pending.length, rewrites }, values)) return 1;
+  const composed = await compose({ settings: { ...settings, fallbacks: {} }, api });
+  try {
+    await composed.index.search("shalat", { limit: 1 });
+    console.log(`Run ${runId}: ${settings.model} ${settings.effort}, up to ${settings.maxExtraToolCalls} extra calls, ${cases.length} conversations of two turns. Results go to ${runFile}.`);
+    const run = await runAnswerEval({
+      engine: composed.engine,
+      cases: turnsOf(cases),
+      historyOf: historyFor(cases),
+      subsetHash: set.hash,
+      runId,
+      runFile,
+      overrides: settings,
+      pauseMs: parseCount(values.pause, "pause") ?? 2000,
+      onProgress: (done, total, record) => {
+        const { trace } = record.finished;
+        const first = trace.attempts.find((attempt) => attempt.firstTextMs !== null)?.firstTextMs ?? null;
+        console.log(`${String(done).padStart(2)}/${total} ${record.caseId} ${record.finished.outcome.kind} first text ${first === null ? "-" : `${(first / 1000).toFixed(1)} s`} done ${(trace.totalMs / 1000).toFixed(1)} s tools ${trace.tools.length}`);
+      },
+    });
+    if (run.stoppedBy !== null) {
+      console.log(`
+Stopped at ${run.stoppedBy.caseId}: ${run.stoppedBy.code}. ${run.stoppedBy.detail}`);
+      console.log(`${run.remaining.length} turns remain. Run the same command again to resume.`);
+      return 2;
+    }
+    console.log(run.remaining.length === 0 ? `
+Run ${runId} is complete.` : `
+${run.remaining.length} turns remain.`);
+    return 0;
+  } finally {
+    await composed.close();
+  }
+}
+
+export function followupsReportCommand(argv: string[]): number {
+  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { out: { type: "string" } } });
+  if (positionals.length === 0) throw new Error("Name at least one run id.");
+  const set = loadFollowups(answerEvalConfig.followupFile);
+  const index = openSearch();
+  try {
+    const reports = positionals.map((runId) => {
+      const records = readRecords(followupRunFileOf(runId));
+      if (records.length === 0) throw new Error(`${followupRunFileOf(runId)} has no results.`);
+      return summarizeFollowups({ runId, cases: set.cases, records, lookup: lookupOf(index) });
+    });
+    const text = `Follow-up set ${set.hash.slice(0, 12)}. Seconds are p50 / p90.
+
+${formatFollowups(reports)}
+`;
+    if (values.out === undefined) console.log(text);
+    else fs.writeFileSync(values.out, text);
+    return 0;
+  } finally {
+    index.close();
+  }
+}
+
 export async function evalAnswersCommand(name: string, args: string[]): Promise<number> {
   if (name === "answers-draft") return draftCommand();
   if (name === "answers-lock") return lockCommand();
   if (name === "answers") return runCommand(args);
   if (name === "answers-report") return reportCommand(args);
   if (name === "answers-spread") return spreadCommand(args);
+  if (name === "followups") return followupsCommand(args);
+  if (name === "followups-report") return followupsReportCommand(args);
   console.error(EVAL_ANSWERS_USAGE);
   return 1;
 }

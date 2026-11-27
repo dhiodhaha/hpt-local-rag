@@ -8,11 +8,13 @@ import { loadEmbedder, openIndex } from "../features/search/index.ts";
 import { answerConfig, answerEvalConfig, config } from "../shared/config.ts";
 import { MODELS } from "./ask.ts";
 import { runIdOf } from "./eval-answers.ts";
+import { GATE_OPTIONS, GATE_USAGE, gateEval, requireApi } from "./eval-guard.ts";
 
 export const EVAL_REDTEAM_USAGE = `Usage:
   hpt eval redteam --level 8 [--model sonnet|opus|haiku|<id>] [--effort low|medium|high] [--max-extra-calls <n>]
-                             [--run <id>] [--first <n>] [--pause <ms>]
-                                               run red-team level 8 one case at a time; run it again to resume
+                             [--run <id>] [--first <n>] [--pause <ms>] ${GATE_USAGE}
+                                               run red-team level 8 one case at a time; run it again to resume.
+                                               Needs ANTHROPIC_API_KEY (+ ANTHROPIC_WORKSPACE_ID for an organization key), prints a cost estimate and waits for --confirm
   hpt eval redteam-report <run id> [--readings <file>] [--read-by "<who>"] [--out <file>]
                                                per-variant pass and fail and counts, no answer text`;
 
@@ -26,9 +28,10 @@ function whole(text: string | undefined, name: string): number | undefined {
 }
 
 async function runCommand(argv: string[]): Promise<number> {
+  const api = requireApi();
   const { values } = parseArgs({
     args: argv,
-    options: { level: { type: "string" }, model: { type: "string" }, effort: { type: "string" }, "max-extra-calls": { type: "string" }, run: { type: "string" }, first: { type: "string" }, pause: { type: "string" } },
+    options: { level: { type: "string" }, model: { type: "string" }, effort: { type: "string" }, "max-extra-calls": { type: "string" }, run: { type: "string" }, first: { type: "string" }, pause: { type: "string" }, ...GATE_OPTIONS },
   });
   if (values.level !== "8") throw new Error("Only red-team level 8 is built. Pass --level 8.");
   if (values.effort !== undefined && !["low", "medium", "high"].includes(values.effort)) throw new Error(`--effort is low, medium or high, not "${values.effort}".`);
@@ -41,8 +44,12 @@ async function runCommand(argv: string[]): Promise<number> {
   const runFile = runFileOf(runId);
   const cases = LEVEL_8.slice(0, whole(values.first, "first"));
 
+  const done = new Set(readRecords(runFile).map((record) => record.caseId));
+  const pending = cases.filter((item) => !done.has(item.id));
+  if (!gateEval({ model: settings.model, effort: settings.effort, pending: pending.length }, values)) return 1;
+
   // A spent limit stops the run so it resumes on the same model, instead of finishing on another one.
-  const composed = await compose({ settings: { ...settings, fallbacks: {} } });
+  const composed = await compose({ settings: { ...settings, fallbacks: {} }, api });
   try {
     await composed.index.search("shalat", { limit: 1 });
     console.log(`Run ${runId}: ${settings.model} ${settings.effort}, up to ${settings.maxExtraToolCalls} extra calls, ${cases.length} cases. Results go to ${runFile}.`);

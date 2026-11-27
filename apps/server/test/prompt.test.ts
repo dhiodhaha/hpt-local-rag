@@ -114,7 +114,7 @@ describe("the user message", () => {
   it("shows an excerpt marked truncated, and the full text when asked for it (a tool reply)", () => {
     const long = makePassage(1, sentences(1, 400));
     const ledger = new SourceLedger();
-    fillLedger(ledger, packContext({ retrieved: { queries: [], hits: [], evidence: { level: "strong", signals: { topCoverage: 1, topIsDirect: true, channelAgreement: null, nearestCosine: null } }, scoped: [long], carry: [], ms: 0 }, history: [], budgetTokens: 500 }));
+    fillLedger(ledger, packContext({ retrieved: { queries: [], hits: [], evidence: { level: "strong", signals: { topCoverage: 1, topIsDirect: true, channelAgreement: null, nearestCosine: null } }, scoped: [long], carry: [], rewrite: null, ms: 0 }, history: [], budgetTokens: 500 }));
     const entry = ledger.resolve("S1")!;
     assert.equal(entry.excerpted, true);
     assert.match(renderPassage(entry, ledger, { full: false }), /truncated="true"/);

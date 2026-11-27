@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { assertProviderContract, chunked, scriptedProvider, type RunProfile, type ToolHost } from "../src/features/providers/index.ts";
 
-const profile: RunProfile = { model: "m", effort: "low", system: "s", tools: [] };
+const profile: RunProfile = { lane: "answer", model: "m", effort: "low", system: "s", tools: [] };
 const tools: ToolHost = { invoke: async () => ({ text: "", isError: false }) };
 
 describe("the scripted provider", () => {

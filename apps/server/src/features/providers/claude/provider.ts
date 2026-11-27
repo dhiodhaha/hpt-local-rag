@@ -1,14 +1,16 @@
 import { crashed, newMessageState, translate } from "./messages.ts";
-import { claudeOptions, emptyCwd } from "./options.ts";
+import { claudeOptions, emptyCwd, type ApiCredential } from "./options.ts";
 import { loadClaudeSdk, type ClaudeQuery, type ClaudeSdk } from "./sdk.ts";
 import { createSpareSlot, stderrTail, type Built, type SpareSlot } from "./spare.ts";
-import type { Provider, ProviderEvent, ProviderFailure, RunProfile } from "../types.ts";
+import type { Lane, Provider, ProviderEvent, ProviderFailure, RunProfile } from "../types.ts";
 
 export type ClaudeProviderOptions = {
   readonly sdk?: ClaudeSdk;
   /** A boot can take a minute on an oversubscribed host, so there is always a bound. Default 20 s. */
   readonly bootTimeoutMs?: number;
   readonly idleMs?: number;
+  /** D34: an API key for this provider's processes. Only a model-calling eval passes one. Without it no key ever reaches a process, whatever the environment holds. */
+  readonly api?: ApiCredential;
 };
 
 const ABORTED: ProviderFailure = { code: "aborted", detail: "aborted", resetsAt: null };
@@ -18,14 +20,15 @@ const failed = (failure: ProviderFailure): ProviderEvent => ({ kind: "end", outc
 /**
  * Claude Code login through the Agent SDK, no API key path. A claimed spare process serves the run when its profile
  * matches, else a fresh `query()` does (about 0.8 s slower to first text). After a claim the next spare boots while this
- * answer streams. `end` is yielded at `result` and the process is closed in the background, because the SDK iterator
+ * answer streams. The rewrite lane is not replenished here: the engine warms it when an ask ends, so its boot never competes with an
+ * answer that is streaming. `end` is yielded at `result` and the process is closed in the background, because the SDK iterator
  * lingers 1.1 to 1.3 s after it. Failures are classified here and never retried here: the engine's policy decides.
  */
 export function claudeProvider(options: ClaudeProviderOptions = {}): Provider {
   const bootTimeoutMs = options.bootTimeoutMs ?? 20_000;
   const idleMs = options.idleMs ?? 600_000;
   let sdkLoad: Promise<ClaudeSdk> | null = null;
-  let slotLoad: Promise<SpareSlot> | null = null;
+  const slotLoads = new Map<Lane, Promise<SpareSlot>>();
 
   const getSdk = () => (options.sdk ? Promise.resolve(options.sdk) : (sdkLoad ??= loadClaudeSdk()));
 
@@ -33,21 +36,27 @@ export function claudeProvider(options: ClaudeProviderOptions = {}): Provider {
     const binding = { host: null };
     const stderr = stderrTail();
     const server = profile.tools.length > 0 ? sdk.mcpServer(profile.tools, binding) : null;
-    return { options: claudeOptions(profile, server, emptyCwd(), stderr.push), binding, stderr };
+    return { options: claudeOptions(profile, server, emptyCwd(), stderr.push, options.api), binding, stderr };
   }
 
-  const getSlot = () => (slotLoad ??= getSdk().then((sdk) => createSpareSlot({ sdk, build: (profile) => build(sdk, profile), bootTimeoutMs, idleMs })));
+  function getSlot(lane: Lane): Promise<SpareSlot> {
+    const known = slotLoads.get(lane);
+    if (known !== undefined) return known;
+    const load = getSdk().then((sdk) => createSpareSlot({ sdk, build: (profile) => build(sdk, profile), bootTimeoutMs, idleMs }));
+    slotLoads.set(lane, load);
+    return load;
+  }
 
   return {
     id: "claude",
     warm(profile) {
-      getSlot().then(
+      getSlot(profile.lane).then(
         (slot) => slot.warm(profile),
         () => {},
       );
     },
     async close() {
-      if (slotLoad !== null) (await slotLoad.catch(() => null))?.close();
+      for (const load of slotLoads.values()) (await load.catch(() => null))?.close();
     },
     async *run(request, signal) {
       const started = performance.now();
@@ -59,12 +68,17 @@ export function claudeProvider(options: ClaudeProviderOptions = {}): Provider {
       let slot: SpareSlot;
       try {
         sdk = await getSdk();
-        slot = await getSlot();
+        slot = await getSlot(request.profile.lane);
       } catch (cause) {
         yield failed(crashed(cause, ""));
         return;
       }
       const claimed = await slot.claim(request.profile, bootTimeoutMs);
+      if (claimed !== null && signal.aborted) {
+        claimed.warm.close();
+        yield failed(ABORTED);
+        return;
+      }
       let query: ClaudeQuery;
       let binding: { host: typeof request.tools | null };
       let stderr: { tail(): string };
@@ -73,7 +87,7 @@ export function claudeProvider(options: ClaudeProviderOptions = {}): Provider {
           ({ binding, stderr } = claimed);
           binding.host = request.tools;
           query = claimed.warm.query(request.user);
-          slot.warm(request.profile);
+          if (request.profile.lane === "answer") slot.warm(request.profile);
         } else {
           const built = build(sdk, request.profile);
           ({ binding, stderr } = built);

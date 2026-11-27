@@ -1,5 +1,6 @@
 export { claudeProvider } from "./claude/provider.ts";
 export type { ClaudeProviderOptions } from "./claude/provider.ts";
+export type { ApiCredential } from "./claude/options.ts";
 export { scriptedProvider, chunked } from "./scripted.ts";
 export type { ScriptedAttempt, ScriptedProvider } from "./scripted.ts";
 export { assertProviderContract, profileKey } from "./types.ts";
@@ -7,6 +8,7 @@ export type {
   Connection,
   Effort,
   FailureCode,
+  Lane,
   Provider,
   ProviderEvent,
   ProviderFailure,

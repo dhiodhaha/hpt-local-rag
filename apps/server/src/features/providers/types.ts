@@ -11,8 +11,15 @@ export type ToolSpec = {
   readonly params: Readonly<Record<string, ToolParam>>;
 };
 
-/** Everything a warm process can be prepared with. Two equal keys mean one process can serve either. */
+/**
+ * Which spare process a run uses. Each lane parks its own, so the small rewrite call (D33) and the answer never replace each
+ * other's warm process.
+ */
+export type Lane = "answer" | "rewrite";
+
+/** Everything a warm process can be prepared with. Two equal keys within a lane mean one process can serve either. */
 export type RunProfile = {
+  readonly lane: Lane;
   /** Provider-specific model id, opaque to the engine. */
   readonly model: string;
   readonly effort: Effort;

@@ -149,14 +149,14 @@ describe("the conversation files", () => {
     assert.deepEqual(conversations.summaries(), []);
   });
 
-  it("scrubs the deleted conversation's trace lines: no conversation id, no search queries", () => {
+  it("scrubs the deleted conversation's trace lines: no conversation id, no search queries, no rewritten query", () => {
     const root = tempDir();
     const dir = path.join(root, "conversations");
     const traces = path.join(root, "traces");
     seed(dir, "c-20261120-090000-aaaa", turn(1, "lama?", "2026-11-20T09:00:00Z"));
     fs.mkdirSync(traces);
     const line = (conversation: string, query: string) =>
-      JSON.stringify({ v: 1, id: crypto.randomUUID(), conversation, turn: 1, totalMs: 4200, cited: ["putusan/x#1"], tools: [
+      JSON.stringify({ v: 1, id: crypto.randomUUID(), conversation, turn: 1, totalMs: 4200, cited: ["putusan/x#1"], rewrite: { ms: 700, used: true, fallback: null, picked: "rewrite", text: `${query} ditulis ulang` }, tools: [
         { n: 1, attempt: 1, tool: "search", arg: query, denied: false, ms: 30, added: ["putusan/x#2"] },
         { n: 2, attempt: 1, tool: "get_passage", arg: "S3", denied: false, ms: 5, added: [] },
       ] });
@@ -171,6 +171,8 @@ describe("the conversation files", () => {
     assert.equal(kept.totalMs, 4200);
     assert.deepEqual(kept.cited, ["putusan/x#1"]);
     assert.deepEqual(kept.tools.map((call: { arg: string }) => call.arg), ["", "S3"]);
+    assert.deepEqual(kept.rewrite, { ms: 700, used: true, fallback: null, picked: "rewrite", text: null });
+    assert.equal(JSON.parse(other ?? "").rewrite.text, "kueri lain ditulis ulang");
     assert.equal(JSON.parse(other ?? "").tools[0].arg, "kueri lain");
     assert.equal(cut, '{"cut');
     assert.deepEqual(fs.readdirSync(traces), ["2026-11-20.jsonl"]);

@@ -28,6 +28,7 @@ export const answerConfig = {
     searchLimit: 10,
     evidenceTokens: 8000,
     fallbacks: { "claude-opus-5-5": { model: "claude-sonnet-5-5", effort: "low" } },
+    rewrite: { model: "claude-haiku-5-5", effort: "low", budgetMs: 2500 },
   },
 } as const;
 
@@ -36,6 +37,7 @@ export const answerEvalConfig = {
   writtenFile: path.join(dataDir, "eval", "answer-written.json"),
   draftFile: path.join(dataDir, "eval", "answer-subset.draft.json"),
   subsetFile: path.join(dataDir, "eval", "answer-subset.json"),
+  followupFile: path.join(dataDir, "eval", "followup-cases.json"),
   lockFile: path.join(repoRoot, "docs", "eval", "answer-subset.lock.json"),
   runsDir: path.join(dataDir, "eval"),
   seed: 13,

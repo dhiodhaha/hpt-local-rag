@@ -7,7 +7,8 @@ import { SourceLedger } from "./ledger.ts";
 import { createPipeline, type Pipeline, type PipelineStep } from "./pipeline.ts";
 import { actionOf, MAX_ATTEMPTS, nextStep, queuesForTestSet, type AttemptEnd, type FindingCode, type NextStep } from "./policy.ts";
 import { systemPrompt, userMessage, type PromptTemplate } from "./prompt.ts";
-import { fillLedger, packContext, retrieve } from "./retrieval.ts";
+import { fillLedger, packContext, retrieve, type Rewriter } from "./retrieval.ts";
+import { rewriteProfile, rewriteQuery, type RewriteSettings } from "./rewrite.ts";
 import { NO_LIMITS, pickRoute, planOf, withLimit, type Fallbacks, type Limits, type Route } from "./routes.ts";
 import { createToolSession, TOOL_SPECS } from "./tools.ts";
 import { createRecorder, type AttemptTrace, type FindingTrace, type Trace, type TraceSink } from "./trace.ts";
@@ -22,6 +23,8 @@ export type EngineSettings = {
   readonly evidenceTokens: number;
   /** D20: the route that takes over when a model's usage limit is spent. Absent or empty means a spent limit fails the answer. */
   readonly fallbacks?: Fallbacks;
+  /** D33: a follow-up is searched with a standalone rewrite of itself. Absent means follow-ups are searched as written. */
+  readonly rewrite?: RewriteSettings;
 };
 
 export type EngineDeps = {
@@ -55,6 +58,8 @@ export type Finished = {
   readonly trace: Trace;
 };
 
+export type WarmOptions = { readonly followUp?: boolean };
+
 export type AnswerEngine = {
   /**
    * Answer one turn. Resolves when the answer is final: the events are all delivered and the trace is written. It never
@@ -62,7 +67,8 @@ export type AnswerEngine = {
    * Asks run one at a time: a second `ask` while one is running waits its turn (one warm process, one subscription).
    */
   ask(turn: Turn, options?: AskOptions): Promise<Finished>;
-  warm(): void;
+  /** Boot the spare process. `followUp` also boots the rewrite's, for a conversation that already has turns. */
+  warm(options?: WarmOptions): void;
   close(): Promise<void>;
 };
 
@@ -75,6 +81,7 @@ export function createEngine(deps: EngineDeps): AnswerEngine {
   let limits: Limits = NO_LIMITS;
 
   const profileFor = (settings: EngineSettings, route: Route): RunProfile => ({
+    lane: "answer",
     model: route.model,
     effort: route.effort,
     system: systemPrompt(deps.prompt, { canary: deps.canary, maxExtraCalls: settings.maxExtraToolCalls }),
@@ -110,19 +117,27 @@ export function createEngine(deps: EngineDeps): AnswerEngine {
       options.onEvent?.(event);
     };
 
-    const retrieved = await retrieve(deps.index, turn, settings);
+    const rewriteSettings = settings.rewrite;
+    const isFollowUp = turn.history.length > 0 && turn.scope === null;
+    const rewriter: Rewriter | undefined =
+      rewriteSettings !== undefined && isFollowUp ? () => rewriteQuery({ provider: deps.provider, settings: rewriteSettings, turn, signal: options.signal, now }) : undefined;
+    const retrieved = await retrieve(deps.index, turn, settings, rewriter);
     const packed = packContext({ retrieved, history: turn.history, budgetTokens: settings.evidenceTokens });
     const ledger = new SourceLedger();
     fillLedger(ledger, packed);
-    recorder.retrieval({
-      ms: Math.round(retrieved.ms),
-      queries: retrieved.queries.length,
-      hits: retrieved.hits.length,
-      evidence: retrieved.evidence.level,
-      packed: packed.entries.length,
-      dropped: packed.dropped.length,
-      estimatedTokens: packed.estimatedTokens,
-    });
+    recorder.retrieval(
+      {
+        ms: Math.round(retrieved.ms),
+        queries: retrieved.queries.length,
+        hits: retrieved.hits.length,
+        evidence: retrieved.evidence.level,
+        packed: packed.entries.length,
+        dropped: packed.dropped.length,
+        estimatedTokens: packed.estimatedTokens,
+        carried: packed.entries.filter((entry) => entry.origin === "carry_over").length,
+      },
+      retrieved.rewrite,
+    );
     emit({ kind: "sources", added: ledger.entries.map(cardOf), evidence: retrieved.evidence });
 
     const tools = createToolSession({
@@ -218,6 +233,8 @@ export function createEngine(deps: EngineDeps): AnswerEngine {
     emit({ kind: "finished", outcome });
     const trace = recorder.finish({ outcome, ledger: ledger.passageIds, tools: tools.calls, cited: answer === null ? [] : citedOf(answer) });
     deps.traces.write(trace);
+    // The next question of a conversation that goes on is a follow-up. Its rewrite process boots while the person reads.
+    if (rewriteSettings !== undefined && (isFollowUp || outcome.kind === "delivered")) deps.provider.warm(rewriteProfile(rewriteSettings));
     return { id, outcome, answer, context: ledger.passageIds, trace };
   }
 
@@ -227,7 +244,10 @@ export function createEngine(deps: EngineDeps): AnswerEngine {
       queue = run.catch(() => {});
       return run;
     },
-    warm: () => deps.provider.warm(profileFor(deps.settings, routeFrom(planFor(deps.settings)))),
+    warm(options = {}) {
+      deps.provider.warm(profileFor(deps.settings, routeFrom(planFor(deps.settings))));
+      if (options.followUp === true && deps.settings.rewrite !== undefined) deps.provider.warm(rewriteProfile(deps.settings.rewrite));
+    },
     async close() {
       await queue.catch(() => {});
       await deps.provider.close();

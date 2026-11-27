@@ -47,6 +47,21 @@ export type AttemptTrace = {
   readonly usage: Usage | null;
 };
 
+/**
+ * D33: the standalone query a follow-up was searched with. `text` is question-derived, so it stays in the trace under data/ and
+ * is scrubbed with the conversation. Null on a first question, which never calls the rewrite.
+ */
+export type RewriteTrace = {
+  /** From the start of the call to its end, or to the budget when it was cut off. */
+  readonly ms: number;
+  /** The rewrite was produced and searched. False means retrieval fell back to the follow-up as written. */
+  readonly used: boolean;
+  readonly fallback: "timeout" | "failed" | "unusable" | "cancelled" | null;
+  /** Which search the context was built from. Null when the rewrite was not used. */
+  readonly picked: "rewrite" | "bare" | null;
+  readonly text: string | null;
+};
+
 export type Trace = {
   readonly v: 1;
   readonly id: string;
@@ -68,7 +83,10 @@ export type Trace = {
     readonly packed: number;
     readonly dropped: number;
     readonly estimatedTokens: number;
+    /** Passages from earlier turns that were added to the fresh hits. */
+    readonly carried: number;
   };
+  readonly rewrite: RewriteTrace | null;
   /** The S-id table in ledger order, so "S3" in any log line means `ledger[2]`. */
   readonly ledger: readonly PassageId[];
   readonly tools: readonly ToolCallLog[];
@@ -96,8 +114,8 @@ export function jsonlTraceSink(dir: string): TraceSink {
 }
 
 /**
- * Deleting a conversation also scrubs its trace lines: the conversation id goes, and so do the search queries, which are
- * question-derived. Timings, outcomes and cited passage ids stay, so the numbers still add up. A line that does not parse
+ * Deleting a conversation also scrubs its trace lines: the conversation id goes, and so do the search queries and the rewritten
+ * query, which are question-derived. Timings, outcomes and cited passage ids stay, so the numbers still add up. A line that does not parse
  * is kept as it is. Each changed file is rewritten through a temporary file and a rename.
  */
 export function scrubConversation(dir: string, conversation: string): number {
@@ -112,7 +130,8 @@ export function scrubConversation(dir: string, conversation: string): number {
       changed = true;
       scrubbed += 1;
       const tools = trace.tools.map((call) => (call.tool === "search" ? { ...call, arg: "" } : call));
-      return JSON.stringify({ ...trace, conversation: null, tools });
+      const rewrite = trace.rewrite === undefined || trace.rewrite === null ? null : { ...trace.rewrite, text: null };
+      return JSON.stringify({ ...trace, conversation: null, tools, rewrite });
     });
     if (!changed) continue;
     const temporary = `${file}.scrub`;
@@ -137,7 +156,7 @@ export function memoryTraceSink(): TraceSink & { readonly traces: readonly Trace
 }
 
 export type Recorder = {
-  retrieval(retrieval: Trace["retrieval"]): void;
+  retrieval(retrieval: Trace["retrieval"], rewrite: RewriteTrace | null): void;
   attemptStarted(n: number, route: Route, fallback: AttemptTrace["fallback"]): void;
   providerStarted(waitMs: number, warm: boolean): void;
   firstText(): void;
@@ -153,13 +172,13 @@ export type Recorder = {
   finish(input: { readonly outcome: Outcome; readonly ledger: readonly PassageId[]; readonly tools: readonly ToolCallLog[]; readonly cited: readonly PassageId[] }): Trace;
 };
 
-export type RecorderInit = Omit<Trace, "retrieval" | "ledger" | "tools" | "attempts" | "outcome" | "totalMs" | "cited"> & {
+export type RecorderInit = Omit<Trace, "retrieval" | "rewrite" | "ledger" | "tools" | "attempts" | "outcome" | "totalMs" | "cited"> & {
   readonly now: () => number;
 };
 
 type Draft = { n: number; route: Route; fallback: AttemptTrace["fallback"]; providerWaitMs: number; warm: boolean; firstTextMs: number | null; committed: { name: string; ms: number }[]; items: Map<string, number> };
 
-const NO_RETRIEVAL: Trace["retrieval"] = { ms: 0, queries: 0, hits: 0, evidence: "absent", packed: 0, dropped: 0, estimatedTokens: 0 };
+const NO_RETRIEVAL: Trace["retrieval"] = { ms: 0, queries: 0, hits: 0, evidence: "absent", packed: 0, dropped: 0, estimatedTokens: 0, carried: 0 };
 
 export function createRecorder(init: RecorderInit): Recorder {
   const { now, ...header } = init;
@@ -167,11 +186,13 @@ export function createRecorder(init: RecorderInit): Recorder {
   const since = () => Math.round(now() - t0);
   const attempts: AttemptTrace[] = [];
   let retrieval = NO_RETRIEVAL;
+  let rewrite: RewriteTrace | null = null;
   let draft: Draft | null = null;
 
   return {
-    retrieval(value) {
+    retrieval(value, rewriteTrace) {
       retrieval = value;
+      rewrite = rewriteTrace;
     },
     attemptStarted(n, route, fallback) {
       draft = { n, route, fallback, providerWaitMs: 0, warm: false, firstTextMs: null, committed: [], items: new Map() };
@@ -210,7 +231,7 @@ export function createRecorder(init: RecorderInit): Recorder {
       draft = null;
     },
     finish(done) {
-      return { ...header, retrieval, ledger: done.ledger, tools: done.tools, attempts, outcome: done.outcome, totalMs: since(), cited: done.cited };
+      return { ...header, retrieval, rewrite, ledger: done.ledger, tools: done.tools, attempts, outcome: done.outcome, totalMs: since(), cited: done.cited };
     },
   };
 }

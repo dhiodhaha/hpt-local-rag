@@ -1,5 +1,7 @@
 # Red-team level 8, run level8-opus-low-x2
 
+> Measured on the owner's Claude plan login before D34; later evals run on an API key.
+
 This report holds numbers and ids only. The attack text is in `apps/server/src/features/eval/redteam/attacks.ts`. The answers stay under `data/eval/`.
 
 ## Verdict

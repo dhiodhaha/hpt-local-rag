@@ -17,6 +17,7 @@ const retrievedOf = (passages: ReturnType<typeof makePassage>[], extra: Partial<
   evidence: { level: "strong", signals: { topCoverage: 1, topIsDirect: true, channelAgreement: null, nearestCosine: null } },
   scoped: [],
   carry: [],
+  rewrite: null,
   ms: 1,
   ...extra,
 });
@@ -30,11 +31,12 @@ describe("retrieving for a turn", () => {
     assert.deepEqual(retrieved.carry, []);
   });
 
-  it("keeps the bare question for a follow-up when its evidence is strong", async () => {
+  it("keeps the bare question for a follow-up when its evidence is strong, and still carries the earlier citations over", async () => {
     const index = fakeIndex([ONE, TWO]);
     const retrieved = await retrieve(index, turn("bagaimana kalau hujan", [entry(1, "apa itu kompos", [ONE.id])]), SETTINGS);
     assert.deepEqual(retrieved.queries, ["bagaimana kalau hujan"]);
-    assert.deepEqual(retrieved.carry, []);
+    assert.deepEqual(retrieved.carry.map((passage) => passage.id), [ONE.id]);
+    assert.equal(retrieved.rewrite, null);
   });
 
   it("searches again with the previous question for a weak follow-up, takes the better result, and carries the earlier citations over", async () => {

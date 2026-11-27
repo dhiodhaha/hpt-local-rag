@@ -136,7 +136,7 @@ ${ASK_USAGE}`);
 ${HOST_USAGE}`);
     }
   }
-  if (command === "eval" && rest[0]?.startsWith("answers")) {
+  if (command === "eval" && (rest[0]?.startsWith("answers") || rest[0]?.startsWith("followups"))) {
     try {
       return await evalAnswersCommand(rest[0], rest.slice(1));
     } catch (cause) {
