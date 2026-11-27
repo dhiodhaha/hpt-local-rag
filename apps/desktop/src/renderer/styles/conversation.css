@@ -632,9 +632,28 @@
   font-weight: 500;
   line-height: 1.45;
   color: var(--color-ink-muted);
+  text-align: start;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Latin first, Arabic after: the Latin keeps its width, and the Arabic, which begins on its right, takes what is left and is cut on its left. */
+.scard-line-text.split {
+  display: flex;
+}
+.scard-line-text .part-lead,
+.scard-line-text .part-arabic {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.scard-line-text .part-lead {
+  flex: none;
+  max-width: 100%;
+}
+.scard-line-text .part-arabic {
+  flex: 0 1 auto;
 }
 .scard-more-pad {
   padding: 6px 20px 18px 46px;

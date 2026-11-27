@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { ARABIC } from "@hpt/server/testing";
-import { arabicRuns, isMostlyArabic, tidyCorpus } from "../src/renderer/arabic.ts";
+import { arabicRuns, isMostlyArabic, rowLine, tidyCorpus } from "../src/renderer/arabic.ts";
 import { gistOf } from "../src/renderer/chat/passage.ts";
 
 const renderer = path.join(path.dirname(fileURLToPath(import.meta.url)), "../src/renderer");
@@ -28,6 +28,22 @@ describe("Arabic in a UI-font line", () => {
     assert.equal(isMostlyArabic(`“…${ARABIC}…”`), true);
     assert.equal(isMostlyArabic(`Ungkapan “kitab” ditulis ${ARABIC} dalam contoh ini.`), false);
     assert.equal(isMostlyArabic("“…”"), false);
+  });
+
+  it("reads a one-line row that starts with Arabic from the right, whatever comes before its first letter", () => {
+    for (const text of [ARABIC, `1. ${ARABIC}`, `“…${ARABIC}…”`, `${ARABIC} lalu penjelasan`]) {
+      const row = rowLine(text);
+      assert.equal(row.dir, "rtl", text);
+      assert.equal(row.arabic, "", text);
+      assert.equal(row.lead, text);
+    }
+  });
+
+  it("keeps a row that starts with Latin in its order and sets its Arabic apart from the first Arabic run on", () => {
+    assert.deepEqual(rowLine(`Contoh kalimat: ${ARABIC} dan seterusnya`), { dir: "ltr", lead: "Contoh kalimat: ", arabic: `${ARABIC} dan seterusnya` });
+    assert.deepEqual(rowLine(`“…bacalah ${ARABIC}…”`), { dir: "ltr", lead: "“…bacalah ", arabic: `${ARABIC}…”` });
+    assert.deepEqual(rowLine("1. Pupuk organik"), { dir: "ltr", lead: "1. Pupuk organik", arabic: "" });
+    assert.deepEqual(rowLine(""), { dir: "ltr", lead: "", arabic: "" });
   });
 
   it("keeps a line with no Arabic as one plain run", () => {

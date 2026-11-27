@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { motion, useIsPresent, useReducedMotion } from "motion/react";
-import { ArabicText } from "../ArabicText.tsx";
+import { ArabicLine, ArabicText } from "../ArabicText.tsx";
 import { tidyCorpus } from "../arabic.ts";
 import type { PassageId } from "@hpt/server/client";
 import { Button, SourceTurnGroup } from "../ui/index.ts";
@@ -101,9 +101,7 @@ function Card({ card, open, hit, index, onToggle, onOpen }: { card: PanelCard; o
         <span className="scard-dot" data-status={card.status} role="img" aria-label={status} title={status} />
         <span className="scard-line">
           <span className="scard-line-in">
-            <span className="scard-line-text">
-              <ArabicText text={card.line} />
-            </span>
+            <ArabicLine className="scard-line-text" text={card.line} />
           </span>
         </span>
       </button>

@@ -33,6 +33,22 @@ const DALIL_PASSAGES: readonly Passage[] = [
   makePassage(7, `Contoh kalimat panjang dalam fatwa: ${ARABIC_C} dan seterusnya.`, { sourceType: "fatwa", title: "Fatwa Tarjih Uji 7", number: "7", year: 2016 }),
 ];
 
+/** One-line Sumber rows whose Arabic is too long for the row: pure Arabic, a numbered one, one with Latin before the Arabic, and a quoted one cut on both sides. */
+const ARABIC_LONG = `${ARABIC_C} ${ARABIC_B} ${ARABIC} ${ARABIC_C}`;
+const ARABIC_ROW_PASSAGES: readonly Passage[] = [
+  SCENARIO_PASSAGES[0] as Passage,
+  makePassage(2, ARABIC_LONG, { sourceType: "hpt", title: "HPT Jilid 3, Bab Uji Arab", number: null, year: null }),
+  makePassage(3, `1. ${ARABIC_LONG}`, { sourceType: "fatwa", title: "Fatwa Tarjih Uji 3", number: "3", year: 2012 }),
+  makePassage(4, `Contoh kalimat dalam kitab: ${ARABIC_LONG}`, { sourceType: "tanya_jawab", title: "Tanya Jawab Uji 4", number: "4", year: 2015 }),
+  makePassage(5, `${ARABIC_LONG} ${ARABIC_LONG}`, { sourceType: "fatwa", title: "Fatwa Tarjih Uji 5", number: "5", year: 2018 }),
+];
+const ARABIC_ROWS = {
+  notes: [],
+  dalil: [],
+  summary: "Kompos boleh dibuat dari sisa daun [S1]. Contoh tulisan Arab ada di [S2], [S3], [S4] dan [S5].",
+  quotes: [{ source: "S5", text: `${ARABIC_B} ${ARABIC} ${ARABIC_C}` }],
+};
+
 const MANY_DALIL = {
   summary: "Kompos boleh dibuat dari sisa daun [S1]. Namun kompos harus matang sebelum dipakai [S2], dan contoh tulisannya ada di kitab [S6].",
   dalil: [
@@ -148,6 +164,8 @@ export const SCENARIOS = {
       stream(answerJson({ headline: "Menurut HPT, kompos yang belum matang tidak boleh dipakai.", summary: "Kompos yang belum matang tidak boleh dipakai [S2]." , notes: [], dalil: [], quotes: [] }), size, 0),
     ],
   },
+  /** One-line Sumber rows with Arabic too long for the row: each must show where the Arabic begins, on the right, and cut on its left. */
+  "arabic-rows": { question: QUESTION, script: (size) => [stream(answerJson(ARABIC_ROWS), size, 0)], passages: ARABIC_ROW_PASSAGES },
   /** Three dalil with Arabic of their own, one inferred and one long: all three are written into the answer. */
   "many-dalil": { question: QUESTION, script: (size) => [stream(answerJson(MANY_DALIL), size, 0)], passages: DALIL_PASSAGES },
   /** The margin when its notes are taller than the text: the later notes must stay level with their lines after the panel or the sidebar changes the width. */
