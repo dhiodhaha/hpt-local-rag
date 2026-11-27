@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
-import { Aura, SuggestionChip } from "../ui/index.ts";
+import { SuggestionChip } from "../ui/index.ts";
 import { COPY } from "./copy.ts";
 import { provenanceOf, type Provenance } from "./provenance.ts";
 
 const COLUMN = 688;
 
 export type HomeProps = {
-  draft: string;
   notice: ReactNode;
   bar: ReactNode;
   firstVisit: boolean;
@@ -15,10 +14,9 @@ export type HomeProps = {
 };
 
 /** The first screen: a greeting, the question box, and on a first visit a few questions to try. */
-export function Home({ draft, notice, bar, firstVisit, unusable, onAsk }: HomeProps) {
+export function Home({ notice, bar, firstVisit, unusable, onAsk }: HomeProps) {
   return (
     <>
-      <Aura state={draft === "" ? "idle" : "compose"} />
       <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 32px 40px", textAlign: "center" }}>
         <h1 style={{ fontFamily: "var(--font-read)", fontWeight: 400, fontSize: 46, lineHeight: 1.1, letterSpacing: "-.015em", textWrap: "balance" }}>{COPY.greeting}</h1>
         <p style={{ fontSize: 17, fontWeight: 500, lineHeight: 1.5, color: "var(--color-ink-muted)", marginTop: 12, textWrap: "balance" }}>{COPY.greetingHint}</p>
