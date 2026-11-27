@@ -5,6 +5,7 @@ import { ComposerBar } from "./ComposerBar.tsx";
 import { connectionOf } from "./connection.ts";
 import { useChat, useHost } from "./context.tsx";
 import { COPY } from "./copy.ts";
+import { provenanceOf, type Provenance } from "./provenance.ts";
 import { RiwayatLayer } from "./RiwayatLayer.tsx";
 import { stampOf } from "./riwayat.ts";
 import { ReaderLayer } from "../reader/index.ts";
@@ -113,9 +114,9 @@ export function ChatScreen() {
     return () => window.removeEventListener("keydown", onKey);
   }, [canStartNew, newConversation]);
 
-  const ask = (text: string) => {
+  const ask = (text: string, provenance: Provenance) => {
     setClosed(false);
-    send(text);
+    send(text, provenance);
   };
   const showPanel = panel !== null && !closed;
   const active = reader?.passage ?? null;
@@ -130,7 +131,7 @@ export function ChatScreen() {
       connected={connection.state === "connected"}
       onDraft={setDraft}
       onChoose={chooseModel}
-      onSend={() => ask(draft)}
+      onSend={(provenance) => ask(draft, provenance)}
     />
   );
 
@@ -152,7 +153,7 @@ export function ChatScreen() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {COPY.riwayat.suggestions.map((text) => (
-                  <SuggestionChip key={text} label={text} disabled={unusable} onClick={() => ask(text)} />
+                  <SuggestionChip key={text} label={text} disabled={unusable} onClick={(event) => ask(text, provenanceOf("suggestion", event))} />
                 ))}
               </div>
             </div>
@@ -175,7 +176,7 @@ export function ChatScreen() {
       <div ref={scroller} className="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "24px 0 28px" }}>
         <div ref={column} style={{ width: COLUMN, margin: "0 auto" }}>
           {turns.map((turn, index) => (
-            <TurnView key={turn.key} turn={turn} latest={index === turns.length - 1} active={active} onCite={(id) => openReader(turn.key, id)} onPick={ask} onRetry={retry} onCancel={cancel} />
+            <TurnView key={turn.key} turn={turn} latest={index === turns.length - 1} active={active} onCite={(id) => openReader(turn.key, id)} onPick={(option, event) => ask(option, provenanceOf("clarify", event))} onRetry={(event) => retry(provenanceOf("retry", event))} onCancel={cancel} />
           ))}
           <div style={{ marginTop: 16 }}>
             <HostNotice />

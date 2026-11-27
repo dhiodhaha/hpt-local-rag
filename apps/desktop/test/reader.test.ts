@@ -9,6 +9,7 @@ import { COPY } from "../src/renderer/chat/copy.ts";
 import { createChatStore, isBusy } from "../src/renderer/chat/store.ts";
 import { annotationsOf, bagianOf, blocksOf, citedIn, documentOf, headingBefore, lastAtOrAbove, whereOf } from "../src/renderer/reader/model.ts";
 
+const PERSON = { via: "enter", trusted: true, focused: true } as const;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function until(check: () => boolean, label: string): Promise<void> {
@@ -25,7 +26,7 @@ async function rig(name: ScenarioName) {
   let keys = 0;
   const store = createChatStore(client, { newKey: () => `t${(keys += 1)}`, schedule: (flush) => flush() });
   await until(() => client.state().kind === "ready", "the host");
-  store.getState().send(SCENARIOS[name].question);
+  store.getState().send(SCENARIOS[name].question, PERSON);
   await until(() => !isBusy(store.getState()), "the answer");
   const turn = store.getState().turns[0];
   assert.ok(turn);
@@ -205,10 +206,10 @@ describe("the reader in the chat store", () => {
     store.getState().openReader(turn.key, id(READER_NOTE, READER_CITED.S1));
     store.getState().newConversation();
     assert.equal(store.getState().reader, null);
-    store.getState().send(SCENARIOS.reader.question);
+    store.getState().send(SCENARIOS.reader.question, PERSON);
     await until(() => !isBusy(store.getState()), "the answer");
     store.getState().openReader(store.getState().turns[0]?.key ?? "", id(READER_NOTE, READER_CITED.S1));
-    store.getState().send("lanjut?");
+    store.getState().send("lanjut?", PERSON);
     assert.equal(store.getState().reader, null);
     await host.close();
   });

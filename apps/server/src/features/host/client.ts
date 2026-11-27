@@ -28,6 +28,22 @@ export type ModelOption = {
   readonly isDefault: boolean;
 };
 
+/** The path a question took from the person to the composer's caller. Every ask names one, so a log line can say how it was made. */
+export const ASK_VIA = ["enter", "button", "suggestion", "clarify", "retry"] as const;
+export type AskVia = (typeof ASK_VIA)[number];
+
+/**
+ * Where an ask came from, written by the renderer and logged by the app's main process (never the question text). `trusted` is
+ * the triggering DOM event's isTrusted, so a script that clicks a button is told apart from a person. `focused` is
+ * document.hasFocus() at that moment. `turn` is the number the question has in the conversation as the window shows it.
+ */
+export type AskOrigin = {
+  readonly via: AskVia;
+  readonly trusted: boolean;
+  readonly focused: boolean;
+  readonly turn: number;
+};
+
 export type AskParams = {
   /** null starts a new conversation. Otherwise an id the host handed out before. */
   readonly conversation: ConversationId | null;
@@ -36,6 +52,7 @@ export type AskParams = {
   readonly scope: Scope | null;
   /** null is the host's default route (Opus 5.5 low, with the D20 fallback). A manual pick of another model has no fallback. */
   readonly choice: { readonly provider: ProviderId; readonly model: string } | null;
+  readonly origin: AskOrigin;
 };
 
 export type AskResult = {

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { ModelChip, type ModelChipProps } from "./ModelChip";
 
 export const COMPOSER_MODELS = ["claude", "claude-open", "codex"] as const;
@@ -12,7 +12,7 @@ export type ComposerProps = {
   field?: ReactNode;
   onAttach?: () => void;
   onCollection?: () => void;
-  onSend?: () => void;
+  onSend?: (event: MouseEvent<HTMLButtonElement>) => void;
 };
 
 const BUILT_IN_CHIPS: Record<ComposerModel, ModelChipProps> = {

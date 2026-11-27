@@ -41,7 +41,7 @@ function rig(script: ScriptedAttempt[], options: { hasPutusan?: boolean; connect
   return { provider, conversations, host, client, closed };
 }
 
-const ask = (overrides: Partial<AskParams> = {}): AskParams => ({ conversation: null, question: "Apakah kompos boleh?", scope: null, choice: null, ...overrides });
+const ask = (overrides: Partial<AskParams> = {}): AskParams => ({ conversation: null, question: "Apakah kompos boleh?", scope: null, choice: null, origin: { via: "enter", trusted: true, focused: true, turn: 1 }, ...overrides });
 
 function collect(client: ReturnType<typeof createClient>, params: AskParams) {
   const events: AnswerEvent[] = [];
@@ -118,6 +118,8 @@ describe("the host over an in-memory pipe", () => {
       ["an empty question", { question: "   " }],
       ["a model that is not in the list", { choice: { provider: "claude", model: "claude-not-real" } }],
       ["a note that is not a putusan", { scope: { kind: "document", noteId: "hpt/bukan-putusan" } }],
+      ["an ask that does not say where it came from", { origin: undefined as never }],
+      ["an origin with a path that is not one of ours", { origin: { via: "script" as never, trusted: true, focused: true, turn: 1 } }],
     ];
     for (const [label, overrides] of refusals) {
       const { call, events } = collect(client, ask(overrides));

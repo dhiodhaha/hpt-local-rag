@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { isConversationId, type Scope } from "../answer/client.ts";
 import { isPutusanNoteId } from "../corpus/index.ts";
-import type { AskParams, ToHost } from "./client.ts";
+import { ASK_VIA, type AskParams, type ToHost } from "./client.ts";
 
 /**
  * Validation of everything a renderer sends. Node side only: the renderer never imports zod. Each schema is typed against the
@@ -23,6 +23,7 @@ export const AskParamsSchema: z.ZodType<AskParams> = z.object({
   question: z.string().trim().min(1).max(MAX_QUESTION_CHARS),
   scope: scope.nullable(),
   choice: z.object({ provider: z.literal("claude"), model: z.string().min(1) }).nullable(),
+  origin: z.object({ via: z.enum(ASK_VIA), trusted: z.boolean(), focused: z.boolean(), turn: z.number().int().min(1).max(100_000) }),
 });
 
 const MAX_QUERY_CHARS = 200;

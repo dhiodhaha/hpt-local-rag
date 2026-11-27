@@ -107,6 +107,25 @@ export const SOURCES_SHOWN = {
   declined: false,
 } as const satisfies Record<AnswerType, boolean>;
 
+/**
+ * Which answer types carry the disclaimer ("bukan fatwa resmi"). It belongs to an answer and to nothing else: not a reply that is
+ * not an answer, not a failure or a withheld answer, and not a run whose type is not known yet (working, rechecking). A new type
+ * is a compile error here, so nobody can forget to decide.
+ */
+export const DISCLAIMER_SHOWN = {
+  answer: true,
+  insufficient: false,
+  clarify: false,
+  out_of_scope: false,
+  declined: false,
+} as const satisfies Record<AnswerType, boolean>;
+
+export function showsDisclaimer(view: RunView): boolean {
+  if (view.kind === "answer") return DISCLAIMER_SHOWN.answer;
+  if (view.kind === "reply") return DISCLAIMER_SHOWN[view.type];
+  return false;
+}
+
 export const SOURCE_TYPE_LABEL = {
   putusan: "Putusan",
   fatwa: "Fatwa",

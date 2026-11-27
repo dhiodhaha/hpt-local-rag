@@ -30,7 +30,7 @@ async function until(check: () => boolean, label: string, ms = 15_000): Promise<
   assert.fail(`timed out waiting for ${label}`);
 }
 
-const ask = (id: string): ToHost => ({ kind: "call", id, method: "ask", params: { conversation: null, question: "Apakah kompos boleh?", scope: null, choice: null } });
+const ask = (id: string): ToHost => ({ kind: "call", id, method: "ask", params: { conversation: null, question: "Apakah kompos boleh?", scope: null, choice: null, origin: { via: "enter", trusted: true, focused: true, turn: 1 } } });
 const kinds = (frames: readonly FromHost[]) => frames.map((frame) => frame.kind);
 
 describe("the supervisor with a real host process", () => {

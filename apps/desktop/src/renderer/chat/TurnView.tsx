@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { RESTART_WHY, citedOf, fallbackNotice, type PassageId } from "@hpt/server/client";
 import { MOTION } from "../motion.ts";
-import { Button, Disclaimer, EarlierTurn, RecheckNotice, SkeletonRow, ThinkingStatus } from "../ui/index.ts";
+import { Button, EarlierTurn, RecheckNotice, SkeletonRow, ThinkingStatus } from "../ui/index.ts";
 import { AnswerCardView } from "./AnswerCardView.tsx";
 import { COPY } from "./copy.ts";
 import { NoticeView } from "./NoticeView.tsx";
 import { ReplyView } from "./ReplyView.tsx";
 import type { Turn } from "./store.ts";
-import { tallyOf, viewOf, type RunView } from "./view.ts";
+import { showsDisclaimer, tallyOf, viewOf, type RunView } from "./view.ts";
 
 export type TurnViewProps = {
   turn: Turn;
@@ -15,8 +15,8 @@ export type TurnViewProps = {
   latest: boolean;
   active: PassageId | null;
   onCite: (id: PassageId) => void;
-  onPick: (option: string) => void;
-  onRetry: () => void;
+  onPick: (option: string, event: MouseEvent<HTMLButtonElement>) => void;
+  onRetry: (event: MouseEvent<HTMLButtonElement>) => void;
   onCancel: () => void;
 };
 
@@ -92,9 +92,6 @@ function Rechecking({ copy }: { copy: string }) {
         <SkeletonRow pos="first" />
         <SkeletonRow pos="last" />
       </section>
-      <div style={{ margin: "16px 4px 0" }}>
-        <Disclaimer t={COPY.disclaimer} />
-      </div>
     </div>
   );
 }
@@ -117,7 +114,7 @@ export function TurnView({ turn, latest, active, onCite, onPick, onRetry, onCanc
       <div style={BUBBLE_STYLE}>{turn.question}</div>
     </div>
   );
-  const answer = view.kind === "answer" ? <AnswerCardView card={view.card} context={context} revealOnArrival={turn.fresh && run.outcome === null} settled={run.summaryDone} /> : null;
+  const answer = view.kind === "answer" ? <AnswerCardView card={view.card} context={context} revealOnArrival={turn.fresh && run.outcome === null} settled={run.summaryDone} disclaimer={showsDisclaimer(view)} /> : null;
 
   if (!latest && view.kind === "answer" && view.card.finished) {
     const { headline } = view.card;

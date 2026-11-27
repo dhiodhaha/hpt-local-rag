@@ -1,5 +1,6 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
-import { noteIdOf, type AnswerEvent, type AskCall, type ConversationId, type ConversationSummary, type HptClient, type NoteId, type OpenedTurn, type Passage, type PassageId, type Scope, type SearchResult } from "@hpt/server/client";
+import { noteIdOf, type AnswerEvent, type AskCall, type AskOrigin, type ConversationId, type ConversationSummary, type HptClient, type NoteId, type OpenedTurn, type Passage, type PassageId, type Scope, type SearchResult } from "@hpt/server/client";
+import type { Provenance } from "./provenance.ts";
 import { emptyRun, reduceRun, storedRun, type Run } from "./run.ts";
 
 /**
@@ -20,6 +21,8 @@ export type Turn = {
   readonly requested: string | null;
   readonly run: Run;
   readonly fresh: boolean;
+  /** How the question was asked. Null for a stored turn, which is not asked again. */
+  readonly origin: AskOrigin | null;
 };
 
 export type Screen = "chat" | "all";
@@ -68,12 +71,15 @@ export type ChatActions = {
   showPassage(passage: PassageId): void;
   retryReader(): void;
   closeReader(): void;
-  /** Does nothing while the last turn is still running: one ask at a time. */
-  send(question: string): void;
+  /**
+   * Does nothing while the last turn is still running (one ask at a time), and nothing when the event that asked was not trusted:
+   * a script that clicks or types is not a person asking.
+   */
+  send(question: string, provenance: Provenance): void;
   /** Cancelling drops the turn and puts the question back in the composer. Nothing was stored, so the history is unchanged. */
   cancel(): void;
   /** Asks the last question again after a failed or withheld answer. */
-  retry(): void;
+  retry(provenance: Provenance): void;
   newConversation(): void;
   refreshHistory(): Promise<void>;
   openConversation(id: ConversationId): Promise<void>;
@@ -143,7 +149,7 @@ export function eventBuffer(apply: (key: string, events: readonly AnswerEvent[])
 
 export const SEARCH_DELAY_MS = 150;
 
-const turnOfStored = (stored: OpenedTurn): Turn => ({ key: stored.id, question: stored.question, at: Date.parse(stored.at), scope: stored.scope, requested: null, run: storedRun(stored), fresh: false });
+const turnOfStored = (stored: OpenedTurn): Turn => ({ key: stored.id, question: stored.question, at: Date.parse(stored.at), scope: stored.scope, requested: null, run: storedRun(stored), fresh: false, origin: null });
 
 const NO_SEARCH: Search = { open: false, query: "", settled: null, result: null };
 
@@ -184,7 +190,7 @@ export function createChatStore(client: HptClient, options: StoreOptions = {}): 
       const begin = () => {
         if (entry.cancelled) return;
         const { conversation, choice } = get();
-        const call = client.ask({ conversation, question: turn.question, scope: turn.scope, choice: choice === null ? null : { provider: "claude", model: choice } }, (event) => buffer.push(turn.key, event));
+        const call = client.ask({ conversation, question: turn.question, scope: turn.scope, choice: choice === null ? null : { provider: "claude", model: choice }, origin: turn.origin as AskOrigin }, (event) => buffer.push(turn.key, event));
         entry.call = call;
         previous = call;
         call.done.then(
@@ -236,10 +242,11 @@ export function createChatStore(client: HptClient, options: StoreOptions = {}): 
         void loadReader(reader.noteId);
       },
       closeReader: () => set({ reader: null }),
-      send(question) {
+      send(question, provenance) {
         const text = question.trim();
-        if (text === "" || isBusy(get())) return;
-        const turn: Turn = { key: newKey(), question: text, at: now(), scope: null, requested: get().choice, run: emptyRun(), fresh: true };
+        if (text === "" || isBusy(get()) || !provenance.trusted) return;
+        const origin: AskOrigin = { ...provenance, turn: get().turns.length + 1 };
+        const turn: Turn = { key: newKey(), question: text, at: now(), scope: null, requested: get().choice, run: emptyRun(), fresh: true, origin };
         set((state) => ({ turns: [...state.turns, turn], draft: "", reader: null, screen: "chat" }));
         start(turn);
       },
@@ -256,11 +263,11 @@ export function createChatStore(client: HptClient, options: StoreOptions = {}): 
         }
         running.call.cancel();
       },
-      retry() {
+      retry(provenance) {
         const last = get().turns.at(-1);
-        if (last === undefined || last.run.outcome === null || last.run.outcome.kind === "delivered") return;
+        if (last === undefined || last.run.outcome === null || last.run.outcome.kind === "delivered" || !provenance.trusted) return;
         set((state) => ({ turns: state.turns.slice(0, -1) }));
-        get().send(last.question);
+        get().send(last.question, provenance);
       },
       newConversation() {
         if (isBusy(get())) return;

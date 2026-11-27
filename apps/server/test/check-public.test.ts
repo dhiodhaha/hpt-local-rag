@@ -29,7 +29,7 @@ describe("pnpm check:public and the local-only files", () => {
   });
 
   it("fails when a trace, a conversation or the canary is tracked under data/", () => {
-    for (const file of ["data/traces/2026-11-26.jsonl", "data/conversations/c-1.jsonl", "data/canary.txt"]) {
+    for (const file of ["data/traces/2026-11-26.jsonl", "data/conversations/c-1.jsonl", "data/logs/input-2026-11-27.jsonl", "data/canary.txt"]) {
       const result = checkWith({ [file]: "{}\n" });
       assert.equal(result.code, 1, file);
       assert.match(result.output, /tracked under data\//);
