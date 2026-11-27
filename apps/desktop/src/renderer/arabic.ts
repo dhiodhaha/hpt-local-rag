@@ -47,6 +47,25 @@ export function arabicRuns(raw: string): Run[] {
   return parts;
 }
 
+/** A one-line row split for drawing. `arabic` is empty unless the row keeps `dir` "ltr" and holds Arabic after its Latin `lead`. */
+export type RowLine = { readonly dir: "rtl" | "ltr"; readonly lead: string; readonly arabic: string };
+
+/**
+ * A one-line row of corpus text is cut at its end when it is too long, and the cut must leave the beginning of each Arabic run in
+ * view. An Arabic run begins on its right. So a row that starts with Arabic (digits, quotes and an ellipsis before the first letter
+ * do not count) reads right to left as a whole, and its cut and "…" fall on the left. A row that starts with Latin keeps its order,
+ * and its Arabic, from the first Arabic run on, is a right-to-left part of its own that takes the room the Latin leaves and is cut
+ * on its left. The browser's `dir="auto"` cannot decide this, because it skips the Arabic runs, which carry a direction of their own.
+ */
+export function rowLine(raw: string): RowLine {
+  const runs = arabicRuns(raw);
+  const join = (part: Run[]) => part.map((run) => run.text).join("");
+  const startsArabic = runs.find((run) => run.arabic || /\p{L}/u.test(run.text))?.arabic === true;
+  const split = runs.findIndex((run) => run.arabic);
+  const whole = startsArabic || split === -1;
+  return { dir: startsArabic ? "rtl" : "ltr", lead: join(whole ? runs : runs.slice(0, split)), arabic: whole ? "" : join(runs.slice(split)) };
+}
+
 /** Most of the letters are Arabic: the text is an Arabic quote, drawn as its own right-to-left block, not a line with Arabic inside. */
 export function isMostlyArabic(text: string): boolean {
   const letters = [...text].filter((char) => /\p{L}/u.test(char));

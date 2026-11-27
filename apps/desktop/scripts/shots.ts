@@ -278,7 +278,7 @@ async function citeOpensInPlace(page: Page): Promise<void> {
   if (!inView) throw new Error("the opened card is not inside the panel's list");
 }
 
-type RowGeometry = { readonly text: string; readonly dir: string; readonly startsWithArabic: boolean; readonly cut: boolean; readonly line: { left: number; right: number }; readonly run: { left: number; right: number } | null; readonly latinLeft: number | null };
+type RowGeometry = { readonly text: string; readonly dir: string; readonly startsWithArabic: boolean; readonly cut: boolean; readonly line: { left: number; right: number }; readonly run: { left: number; right: number } | null; readonly latinLeft: number | null; readonly arabicLeft: number | null };
 
 /**
  * A one-line row that starts with Arabic starts on the right: its first Arabic run is not clipped there, and when the row is too long
@@ -291,18 +291,20 @@ async function arabicRowsShowTheirBeginning(page: Page): Promise<void> {
       const box = element.getBoundingClientRect();
       const run = element.querySelector(".ar-run")?.getBoundingClientRect() ?? null;
       const text = element.textContent ?? "";
-      const lead = element.firstChild;
+      const words = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let latin: Text | null = null;
+      for (let node = words.nextNode(); node !== null && latin === null; node = words.nextNode()) if (/\p{Script=Latin}/u.test(node.textContent ?? "")) latin = node as Text;
       const range = document.createRange();
-      if (lead !== null) range.selectNodeContents(lead);
-      const latin = lead?.nodeType === Node.TEXT_NODE && /\p{Script=Latin}/u.test(lead.textContent ?? "");
+      if (latin !== null) range.selectNodeContents(latin);
       return {
         text: text.slice(0, 24),
         dir: getComputedStyle(element).direction,
         startsWithArabic: /^[^\p{L}]*\p{Script=Arabic}/u.test(text),
-        cut: element.scrollWidth > element.clientWidth,
+        cut: [element, ...element.querySelectorAll("*")].some((part) => part.scrollWidth > part.clientWidth + 1),
         line: { left: box.left, right: box.right },
         run: run === null ? null : { left: run.left, right: run.right },
-        latinLeft: latin ? range.getBoundingClientRect().left : null,
+        latinLeft: latin === null ? null : range.getBoundingClientRect().left,
+        arabicLeft: (element.querySelector(".part-arabic") ?? element.querySelector(".ar-run"))?.getBoundingClientRect().left ?? null,
       };
     }),
   );
@@ -316,11 +318,13 @@ async function arabicRowsShowTheirBeginning(page: Page): Promise<void> {
       if (row.run.right > row.line.right + 1) found.push(`loses its beginning: the run reaches ${Math.round(row.run.right)} and the row ends at ${Math.round(row.line.right)}`);
       return found.map((problem) => `"${row.text}" ${problem}`);
     }
-    const inOrder = row.latinLeft !== null && row.latinLeft < row.run.left;
-    return row.dir === "ltr" && inOrder ? [] : [`"${row.text}" does not keep its reading order`];
+    const found = [];
+    if (row.dir !== "ltr" || row.latinLeft === null || row.arabicLeft === null || row.latinLeft >= row.arabicLeft) found.push("does not keep its reading order");
+    if (row.run.right > row.line.right + 1) found.push(`loses the beginning of its Arabic: the run reaches ${Math.round(row.run.right)} and the row ends at ${Math.round(row.line.right)}`);
+    return found.map((problem) => `"${row.text}" ${problem}`);
   });
   if (problems.length > 0) throw new Error(`Arabic rows are wrong: ${problems.join("; ")}`);
-  if (!arabicRows.some((row) => row.startsWithArabic && row.cut)) throw new Error("no Arabic row is cut, so the check proves nothing");
+  if (arabicRows.filter((row) => row.cut).length < 4) throw new Error("fewer than four Arabic rows are cut, so the check proves little");
 }
 
 async function hoverPanelIcon(page: Page): Promise<void> {
