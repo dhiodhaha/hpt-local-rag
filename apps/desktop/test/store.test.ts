@@ -174,6 +174,14 @@ describe("Riwayat in the store", () => {
     await host.close();
   });
 
+  it("shows a generated title in the sidebar in place of the question, once it arrives", async () => {
+    const { store, host } = await rig("titled");
+    store.getState().send("Apakah kompos boleh dibuat dari sisa daun?", PERSON);
+    await until(() => store.getState().history.conversations[0]?.title === "Kompos dari sisa daun", "the generated title");
+    assert.deepEqual(store.getState().history.conversations.map((entry) => entry.renamed), [false]);
+    await host.close();
+  });
+
   it("renames in place, and deleting the open conversation clears the screen", async () => {
     const { store, host } = await riwayatRig();
     const [first] = store.getState().history.conversations;

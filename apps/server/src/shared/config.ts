@@ -30,6 +30,8 @@ export const answerConfig = {
     fallbacks: { "claude-opus-5-5": { model: "claude-sonnet-5-5", effort: "low" } },
     rewrite: { model: "claude-haiku-5-5", effort: "low", budgetMs: 2500 },
   },
+  /** D36: the title of a conversation, one small call after its first answer. Kept out of `answer` so a rig that scripts the provider has no title call unless it asks for one. */
+  title: { model: "claude-haiku-5-5", effort: "low", budgetMs: 5000 },
 } as const;
 
 /** Answer eval files. Everything with question or answer text is under data/. Only the lock is committed: ids, categories and a hash. */

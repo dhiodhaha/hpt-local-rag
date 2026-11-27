@@ -104,6 +104,8 @@ export type FromHost =
   | { readonly kind: "ready"; readonly status: HostStatus }
   /** The login check finished. Sent once per host start, after `ready`. */
   | { readonly kind: "connection"; readonly connection: Connection }
+  /** A conversation got a generated title (D36) after its first answer, some time after the answer was delivered. Not tied to a call. */
+  | { readonly kind: "title"; readonly conversation: ConversationSummary }
   /** Sent by the process that supervises the host, not by the host: it exited or could not start. */
   | { readonly kind: "down"; readonly reason: string }
   | { readonly kind: "event"; readonly id: CallId; readonly event: Methods[MethodName]["event"] }
@@ -141,6 +143,8 @@ export type HptClient = {
    * second path for "the stream just stopped".
    */
   ask(params: AskParams, onEvent: (event: AnswerEvent) => void): AskCall;
+  /** Called when a conversation gets a generated title (D36). Returns the way to stop listening. */
+  onTitle(listener: (conversation: ConversationSummary) => void): () => void;
   /** Riwayat and its kin. Waits for `ready`, rejects with a HostError (also when the host is down). */
   request<M extends UnaryMethod>(method: M, params: Methods[M]["params"]): Promise<Methods[M]["result"]>;
 };
@@ -183,6 +187,7 @@ type OpenCall = {
 export function createClient(pipe: Pipe, newId: () => CallId = () => crypto.randomUUID()): HptClient {
   let state: ConnectionState = { kind: "starting" };
   const listeners = new Set<() => void>();
+  const titleListeners = new Set<(conversation: ConversationSummary) => void>();
   const open = new Map<CallId, OpenCall>();
 
   const setState = (next: ConnectionState) => {
@@ -214,6 +219,9 @@ export function createClient(pipe: Pipe, newId: () => CallId = () => crypto.rand
       }
       case "connection":
         if (state.kind === "ready") setState({ ...state, connection: frame.connection });
+        return;
+      case "title":
+        for (const listener of titleListeners) listener(frame.conversation);
         return;
       case "down":
         setState({ kind: "down", reason: frame.reason });
@@ -248,6 +256,10 @@ export function createClient(pipe: Pipe, newId: () => CallId = () => crypto.rand
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    onTitle(listener) {
+      titleListeners.add(listener);
+      return () => titleListeners.delete(listener);
     },
     request<M extends UnaryMethod>(method: M, params: Methods[M]["params"]): Promise<Methods[M]["result"]> {
       const id = newId();

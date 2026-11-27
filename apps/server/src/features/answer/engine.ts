@@ -10,6 +10,7 @@ import { systemPrompt, userMessage, type PromptTemplate } from "./prompt.ts";
 import { fillLedger, packContext, retrieve, type Rewriter } from "./retrieval.ts";
 import { rewriteProfile, rewriteQuery, type RewriteSettings } from "./rewrite.ts";
 import { NO_LIMITS, pickRoute, planOf, withLimit, type Fallbacks, type Limits, type Route } from "./routes.ts";
+import { generateTitle, traceOfTitle, type TitleResult, type TitleSettings } from "./title.ts";
 import { createToolSession, TOOL_SPECS } from "./tools.ts";
 import { createRecorder, type AttemptTrace, type FindingTrace, type Trace, type TraceSink } from "./trace.ts";
 import { createTripwire } from "./tripwire.ts";
@@ -25,6 +26,8 @@ export type EngineSettings = {
   readonly fallbacks?: Fallbacks;
   /** D33: a follow-up is searched with a standalone rewrite of itself. Absent means follow-ups are searched as written. */
   readonly rewrite?: RewriteSettings;
+  /** D36: a conversation is titled after its first answer, when a caller asks (`title`). Absent means `title` makes no call. */
+  readonly title?: TitleSettings;
 };
 
 export type EngineDeps = {
@@ -67,6 +70,13 @@ export type AnswerEngine = {
    * Asks run one at a time: a second `ask` while one is running waits its turn (one warm process, one subscription).
    */
   ask(turn: Turn, options?: AskOptions): Promise<Finished>;
+  /**
+   * D36: one small call that gives the conversation of a delivered first answer a title of 3 to 6 words. Null, with no call, when the
+   * engine has no title settings or the reply is not an answer. Otherwise it never rejects and never takes longer than the budget, and
+   * it records the call in the ask's trace. Nobody should wait for it: it is not part of `ask`, and it is not queued behind one.
+   * `keep` stores the title and says whether it was stored, so the trace says what happened and not only what was generated.
+   */
+  title(finished: Finished, question: string, keep: (title: string) => boolean): Promise<TitleResult | null>;
   /** Boot the spare process. `followUp` also boots the rewrite's, for a conversation that already has turns. */
   warm(options?: WarmOptions): void;
   close(): Promise<void>;
@@ -79,6 +89,7 @@ export function createEngine(deps: EngineDeps): AnswerEngine {
   const wall = deps.wall ?? Date.now;
   let queue: Promise<unknown> = Promise.resolve();
   let limits: Limits = NO_LIMITS;
+  const titling = new Set<AbortController>();
 
   const profileFor = (settings: EngineSettings, route: Route): RunProfile => ({
     lane: "answer",
@@ -248,7 +259,19 @@ export function createEngine(deps: EngineDeps): AnswerEngine {
       deps.provider.warm(profileFor(deps.settings, routeFrom(planFor(deps.settings))));
       if (options.followUp === true && deps.settings.rewrite !== undefined) deps.provider.warm(rewriteProfile(deps.settings.rewrite));
     },
+    async title(finished, question, keep) {
+      const settings = deps.settings.title;
+      const headline = finished.answer?.type === "answer" ? finished.answer.headline : null;
+      if (settings === undefined || headline === null) return null;
+      const controller = new AbortController();
+      titling.add(controller);
+      const made = await generateTitle({ provider: deps.provider, settings, question, headline, signal: controller.signal, now }).finally(() => titling.delete(controller));
+      const result: TitleResult = made.text === null || keep(made.text) ? made : { text: null, ms: made.ms, fallback: "renamed" };
+      deps.traces.update?.({ ...finished.trace, title: traceOfTitle(result) });
+      return result;
+    },
     async close() {
+      for (const controller of titling) controller.abort();
       await queue.catch(() => {});
       await deps.provider.close();
     },

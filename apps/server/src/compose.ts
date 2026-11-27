@@ -34,7 +34,7 @@ export async function compose(options: ComposeOptions = {}): Promise<Composed> {
     prompt: loadPromptTemplate(answerConfig.systemPromptDoc),
     canary: loadCanary(answerConfig.canaryFile, process.env),
     traces,
-    settings: { ...answerConfig.answer, ...options.settings },
+    settings: { ...answerConfig.answer, title: answerConfig.title, ...options.settings },
   });
   let closing: Promise<void> | null = null;
   return {

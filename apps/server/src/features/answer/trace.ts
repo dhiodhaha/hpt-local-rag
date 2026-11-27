@@ -62,6 +62,21 @@ export type RewriteTrace = {
   readonly text: string | null;
 };
 
+/**
+ * D36: the title the first answer's conversation was given, recorded after the answer, because nobody waits for it. `text` is
+ * question-derived, so it stays in the trace under data/ and is scrubbed with the conversation. Null on every turn but the first,
+ * and on a first reply that is not an answer.
+ */
+export type TitleTrace = {
+  /** From the start of the call to its end, or to the budget when it was cut off. */
+  readonly ms: number;
+  /** The title was produced and stored. False means the question stays as the title. */
+  readonly used: boolean;
+  /** `renamed`: the title came, but the person had named the conversation by then, and their name wins. */
+  readonly fallback: "timeout" | "failed" | "unusable" | "cancelled" | "renamed" | null;
+  readonly text: string | null;
+};
+
 export type Trace = {
   readonly v: 1;
   readonly id: string;
@@ -87,6 +102,8 @@ export type Trace = {
     readonly carried: number;
   };
   readonly rewrite: RewriteTrace | null;
+  /** Added to the stored line when the title call ends (`TraceSink.update`). Absent on lines written before D36. */
+  readonly title?: TitleTrace | null;
   /** The S-id table in ledger order, so "S3" in any log line means `ledger[2]`. */
   readonly ledger: readonly PassageId[];
   readonly tools: readonly ToolCallLog[];
@@ -97,26 +114,49 @@ export type Trace = {
   readonly cited: readonly PassageId[];
 };
 
-export type TraceSink = { write(trace: Trace): void };
+export type TraceSink = {
+  write(trace: Trace): void;
+  /** Replaces the stored line of a trace already written (same `id` and `at`), for what is known only after the answer: the title. */
+  update?(trace: Trace): void;
+};
 
-/** Appends to `<dir>/YYYY-MM-DD.jsonl`. A write failure goes to stderr and is never thrown: a trace must not fail an answer. */
+const dayFile = (dir: string, trace: Trace) => path.join(dir, `${trace.at.slice(0, 10)}.jsonl`);
+
+function quietly(what: string, work: () => void): void {
+  try {
+    work();
+  } catch (cause) {
+    console.error(`could not ${what} the trace: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
+}
+
+/**
+ * Appends to `<dir>/YYYY-MM-DD.jsonl`. A write failure goes to stderr and is never thrown: a trace must not fail an answer. An update
+ * rewrites the day's file through a temporary file and a rename in one synchronous step, so no append from this process lands in between.
+ */
 export function jsonlTraceSink(dir: string): TraceSink {
   return {
-    write(trace) {
-      try {
+    write: (trace) =>
+      quietly("write", () => {
         fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${trace.at.slice(0, 10)}.jsonl`), `${JSON.stringify(trace)}\n`);
-      } catch (cause) {
-        console.error(`could not write the trace: ${cause instanceof Error ? cause.message : String(cause)}`);
-      }
-    },
+        fs.appendFileSync(dayFile(dir, trace), `${JSON.stringify(trace)}\n`);
+      }),
+    update: (trace) =>
+      quietly("update", () => {
+        const file = dayFile(dir, trace);
+        if (!fs.existsSync(file)) return;
+        const lines = fs.readFileSync(file, "utf8").split("\n").map((line) => (parseTrace(line)?.id === trace.id ? JSON.stringify(trace) : line));
+        const temporary = `${file}.update`;
+        fs.writeFileSync(temporary, lines.join("\n"));
+        fs.renameSync(temporary, file);
+      }),
   };
 }
 
 /**
- * Deleting a conversation also scrubs its trace lines: the conversation id goes, and so do the search queries and the rewritten
- * query, which are question-derived. Timings, outcomes and cited passage ids stay, so the numbers still add up. A line that does not parse
- * is kept as it is. Each changed file is rewritten through a temporary file and a rename.
+ * Deleting a conversation also scrubs its trace lines: the conversation id goes, and so do the search queries, the rewritten
+ * query and the title, which are question-derived. Timings, outcomes and cited passage ids stay, so the numbers still add up. A line
+ * that does not parse is kept as it is. Each changed file is rewritten through a temporary file and a rename.
  */
 export function scrubConversation(dir: string, conversation: string): number {
   if (!fs.existsSync(dir)) return 0;
@@ -131,7 +171,8 @@ export function scrubConversation(dir: string, conversation: string): number {
       scrubbed += 1;
       const tools = trace.tools.map((call) => (call.tool === "search" ? { ...call, arg: "" } : call));
       const rewrite = trace.rewrite === undefined || trace.rewrite === null ? null : { ...trace.rewrite, text: null };
-      return JSON.stringify({ ...trace, conversation: null, tools, rewrite });
+      const title = trace.title === undefined || trace.title === null ? null : { ...trace.title, text: null };
+      return JSON.stringify({ ...trace, conversation: null, tools, rewrite, title });
     });
     if (!changed) continue;
     const temporary = `${file}.scrub`;
@@ -152,7 +193,14 @@ function parseTrace(line: string): Trace | null {
 
 export function memoryTraceSink(): TraceSink & { readonly traces: readonly Trace[] } {
   const traces: Trace[] = [];
-  return { traces, write: (trace) => void traces.push(trace) };
+  return {
+    traces,
+    write: (trace) => void traces.push(trace),
+    update(trace) {
+      const at = traces.findIndex((stored) => stored.id === trace.id);
+      if (at !== -1) traces[at] = trace;
+    },
+  };
 }
 
 export type Recorder = {
@@ -231,7 +279,7 @@ export function createRecorder(init: RecorderInit): Recorder {
       draft = null;
     },
     finish(done) {
-      return { ...header, retrieval, rewrite, ledger: done.ledger, tools: done.tools, attempts, outcome: done.outcome, totalMs: since(), cited: done.cited };
+      return { ...header, retrieval, rewrite, title: null, ledger: done.ledger, tools: done.tools, attempts, outcome: done.outcome, totalMs: since(), cited: done.cited };
     },
   };
 }

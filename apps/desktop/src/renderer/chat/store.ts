@@ -361,5 +361,15 @@ export function createChatStore(client: HptClient, options: StoreOptions = {}): 
       },
     };
   });
+  /** D36: a conversation got a generated title some time after its answer. It takes the place of the question in the sidebar. */
+  client.onTitle((conversation) => {
+    const known = store.getState().history.conversations.some((entry) => entry.id === conversation.id);
+    if (!known) {
+      void store.getState().refreshHistory();
+      return;
+    }
+    store.setState((state) => ({ history: { ...state.history, conversations: state.history.conversations.map((entry) => (entry.id === conversation.id ? conversation : entry)) } }));
+    if (store.getState().search.query !== "") store.getState().setQuery(store.getState().search.query);
+  });
   return store;
 }

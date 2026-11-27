@@ -91,6 +91,7 @@ function engineReturning(results: (Partial<Finished> & { answer: CompleteAnswer 
   let call = 0;
   const engine: AnswerEngine = {
     warm: () => {},
+    title: async () => null,
     close: async () => {},
     ask: async (turn, options) => {
       turns.push(turn);

@@ -75,6 +75,8 @@ export function startSupervisor(deps: SupervisorDeps): Supervisor {
     } else if (frame.kind === "connection") {
       connection = frame;
       broadcast(frame);
+    } else if (frame.kind === "title") {
+      broadcast(frame);
     } else if (frame.kind === "event" || frame.kind === "result" || frame.kind === "error") {
       owners.get(frame.id)?.send(frame);
       if (frame.kind !== "event") owners.delete(frame.id);

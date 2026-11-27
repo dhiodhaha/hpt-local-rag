@@ -1,5 +1,6 @@
-import type { Effort, Provider, ProviderRequest, RunProfile, ToolHost } from "../providers/index.ts";
+import type { Effort, Provider, RunProfile } from "../providers/index.ts";
 import { escapeText } from "./prompt.ts";
+import { smallCall } from "./small-call.ts";
 import type { RewriteTrace } from "./trace.ts";
 import type { HistoryEntry, Turn } from "./types.ts";
 
@@ -62,23 +63,6 @@ export function queryFrom(reply: string): string | null {
   return bare === "" || bare.length > QUERY_CHARS ? null : bare;
 }
 
-const NO_TOOLS: ToolHost = { invoke: async () => ({ text: "This tool is not available.", isError: true }) };
-
-type Consumed = { readonly kind: "reply"; readonly text: string } | { readonly kind: "failed" };
-
-async function consume(provider: Provider, request: ProviderRequest, signal: AbortSignal): Promise<Consumed> {
-  let text = "";
-  try {
-    for await (const event of provider.run(request, signal)) {
-      if (event.kind === "text") text += event.delta;
-      else if (event.kind === "end") return event.outcome.ok ? { kind: "reply", text } : { kind: "failed" };
-    }
-  } catch {
-    return { kind: "failed" };
-  }
-  return { kind: "failed" };
-}
-
 export type RewriteInput = {
   readonly provider: Provider;
   readonly settings: RewriteSettings;
@@ -90,30 +74,8 @@ export type RewriteInput = {
 /** Never rejects and never takes longer than the budget. */
 export async function rewriteQuery(input: RewriteInput): Promise<RewriteResult> {
   const { provider, settings, turn, signal, now } = input;
-  const started = now();
-  const elapsed = () => Math.round(now() - started);
-  if (signal?.aborted) return { text: null, ms: 0, fallback: "cancelled" };
-
-  const controller = new AbortController();
-  const onAbort = () => controller.abort();
-  signal?.addEventListener("abort", onAbort, { once: true });
-  let timer: NodeJS.Timeout | undefined;
-  const late = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      resolve("timeout");
-    }, settings.budgetMs);
-  });
-  try {
-    const request: ProviderRequest = { profile: rewriteProfile(settings), user: rewriteMessage(turn), tools: NO_TOOLS };
-    const outcome = await Promise.race([consume(provider, request, controller.signal), late]);
-    if (outcome === "timeout") return { text: null, ms: elapsed(), fallback: "timeout" };
-    if (signal?.aborted) return { text: null, ms: elapsed(), fallback: "cancelled" };
-    if (outcome.kind === "failed") return { text: null, ms: elapsed(), fallback: "failed" };
-    const text = queryFrom(outcome.text);
-    return text === null ? { text: null, ms: elapsed(), fallback: "unusable" } : { text, ms: elapsed(), fallback: null };
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener("abort", onAbort);
-  }
+  const call = await smallCall({ provider, profile: rewriteProfile(settings), user: rewriteMessage(turn), budgetMs: settings.budgetMs, signal, now });
+  if (call.text === null) return { text: null, ms: call.ms, fallback: call.fallback };
+  const text = queryFrom(call.text);
+  return text === null ? { text: null, ms: call.ms, fallback: "unusable" } : { text, ms: call.ms, fallback: null };
 }
