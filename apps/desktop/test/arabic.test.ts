@@ -17,6 +17,12 @@ describe("Arabic in a UI-font line", () => {
     assert.equal(runs[1]?.text, `${ARABIC}، ${ARABIC}`);
   });
 
+  it("keeps the ellipsis of a cut Arabic excerpt inside the run, so it shows on the left", () => {
+    assert.deepEqual(arabicRuns(`Ringkasan ${ARABIC}…`), [{ text: "Ringkasan ", arabic: false }, { text: `${ARABIC}…`, arabic: true }]);
+    assert.deepEqual(arabicRuns(`“…${ARABIC}”`), [{ text: "“", arabic: false }, { text: `…${ARABIC}`, arabic: true }, { text: "”", arabic: false }]);
+    assert.deepEqual(arabicRuns("Hadits pertama…"), [{ text: "Hadits pertama…", arabic: false }]);
+  });
+
   it("keeps a line with no Arabic as one plain run", () => {
     assert.deepEqual(arabicRuns("Pupuk organik dari kompos."), [{ text: "Pupuk organik dari kompos.", arabic: false }]);
   });

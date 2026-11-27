@@ -1,5 +1,6 @@
 const ARABIC_CHARS = "\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF";
-const ARABIC_RUN = new RegExp(`[${ARABIC_CHARS}]+(?:[\\s\\u060C\\u061B\\u061F]+[${ARABIC_CHARS}]+)*`, "gu");
+/** An ellipsis touching the run belongs to it, so a cut Arabic excerpt shows "…" at its own end, on the left. */
+const ARABIC_RUN = new RegExp(`…?[${ARABIC_CHARS}]+(?:[\\s\\u060C\\u061B\\u061F]+[${ARABIC_CHARS}]+)*…?`, "gu");
 export const ARABIC_CHAR = new RegExp(`[${ARABIC_CHARS}]`, "gu");
 
 export type Run = { readonly text: string; readonly arabic: boolean };
